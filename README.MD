@@ -1,195 +1,117 @@
-🧠 PatCode — Tu asistente de programación local impulsado por Ollama
+🧠 PatCode — Asistente de Programación Local con Ollama
 
-PatCode es un asistente de programación local que replica las funcionalidades de Claude Code, pero completamente offline, utilizando modelos de Ollama (como Llama 3.2).
-Te permite interactuar con tu código, pedir explicaciones, recibir sugerencias o depurar errores directamente desde tu terminal, sin depender de la nube.
+PatCode es un asistente de programación local que replica las funcionalidades de Claude Code, pero completamente offline, utilizando modelos de Ollama (como Llama 3.2). Te permite interactuar con tu código, pedir explicaciones, recibir sugerencias o depurar errores directamente desde tu terminal, sin depender de la nube.
 
-🚀 Características principales
+🚀 Características Principales
 
-💬 Interacción natural: escribí preguntas o instrucciones como si hablaras con otro programador.
+Interacción Natural: Escribe preguntas o instrucciones en lenguaje natural y recibe respuestas claras y útiles.
 
-🧠 Memoria persistente: recuerda el contexto de las últimas conversaciones.
+Análisis de Código: Detecta errores de sintaxis y ofrece sugerencias de mejora.
 
-🔍 Análisis de código: podés copiar código o fragmentos y pedirle explicaciones o mejoras.
+Refactorización Automática: Mejora la estructura y eficiencia de tu código.
 
-⚙️ 100% local: funciona sin conexión, usando tu modelo Ollama (ej. llama3.2:latest).
+Ejecución de Pruebas: Corre tus tests y muestra los resultados directamente en la terminal.
 
-🔒 Privado y seguro: ningún dato sale de tu equipo.
+Integración con Git: Realiza commits y revisa el estado de tu repositorio sin salir de la terminal.
 
-📁 Estructura del proyecto
+Memoria Persistente: Recuerda el contexto de tus interacciones anteriores para ofrecer respuestas más precisas.
+
+🛠 Requisitos
+
+Python 3.11 o superior
+
+Ollama instalado y en funcionamiento
+
+Modelos de Ollama descargados (por ejemplo, llama3.2:latest)
+
+Git instalado y configurado
+
+
+🧩 Estructura del Proyecto
 PatCode/
 │
-├── main.py                     # Punto de entrada
-├── agents/
+├── main.py                          # Punto de entrada principal
+├── requirements.txt                 # Dependencias Python
+├── README.md                        # Documentación del proyecto
+├── .gitignore                       # Archivos a ignorar en Git
+│
+├── config/                          # ⚙️ CONFIGURACIÓN
 │   ├── __init__.py
-│   ├── pat_agent.py            # Lógica del asistente IA
+│   ├── settings.py                  # Configuración general (URLs, paths, límites)
+│   ├── prompts.py                   # System prompts y plantillas
+│   └── models.py                    # Configuración de modelos Ollama
 │
-├── memory/
-│   └── memory.json             # Memoria persistente (últimos diálogos)
+├── agents/                          # 🤖 AGENTES IA
+│   ├── __init__.py
+│   ├── pat_agent.py                 # Agente principal con herramientas
+│   ├── agentic_loop.py              # Loop de razonamiento-acción
+│   ├── tool_parser.py               # Parser de llamadas a herramientas
+│   ├── planner.py                   # Planificador de tareas complejas
+│   └── memory/
+│       ├── memory.json              # Historial de conversaciones
+│       └── context_cache.json       # Cache de contexto de proyecto
 │
-└── requirements.txt            # Dependencias del proyecto
+├── tools/                           # 🔧 HERRAMIENTAS
+│   ├── __init__.py
+│   ├── base_tool.py                 # Clase base abstracta
+│   ├── file_tools.py                # Leer/escribir archivos
+│   ├── directory_tools.py           # Navegación de directorios
+│   ├── shell_tools.py               # Ejecución de comandos shell
+│   ├── search_tools.py              # Búsqueda en código
+│   ├── git_tools.py                 # Operaciones Git
+│   └── analysis_tools.py            # Análisis estático de código
+│
+├── context/                         # 📊 ANÁLISIS DE CONTEXTO
+│   ├── __init__.py
+│   ├── project_analyzer.py          # Analiza estructura del proyecto
+│   ├── code_indexer.py              # Indexa y mapea código
+│   ├── dependency_mapper.py         # Mapea dependencias
+│   └── semantic_search.py           # Búsqueda semántica en código
+│
+├── utils/                           # 🛠️ UTILIDADES
+│   ├── __init__.py
+│   ├── formatters.py                # Formateo de output
+│   ├── diff_viewer.py               # Visualización de cambios
+│   ├── validators.py                # Validaciones de seguridad
+│   ├── logger.py                    # Sistema de logging
+│   └── colors.py                    # Colores para terminal
+│
+├── ui/                              # 🎨 INTERFAZ (Opcional - Fase 4)
+│   ├── __init__.py
+│   ├── cli.py                       # Interfaz de línea de comandos mejorada
+│   ├── tui.py                       # Terminal UI (con rich/textual)
+│   └── web.py                       # Interfaz web (con Streamlit)
+│
+└── tests/                           # ✅ TESTS
+    ├── __init__.py
+    ├── test_tools.py                # Tests de herramientas
+    ├── test_agent.py                # Tests del agente
+    ├── test_parser.py               # Tests del parser
+    └── fixtures/                    # Archivos de prueba
+        └── sample_project/
 
-⚙️ Requisitos previos
+📚 Contribuciones
 
-Antes de comenzar, asegurate de tener instalado:
+¡Las contribuciones son bienvenidas! Si deseas mejorar PatCode, por favor sigue estos pasos:
 
-Python 3.9 o superior
+Fork este repositorio.
 
-Ollama (en ejecución en tu sistema)
-👉 Descargar Ollama
+Crea una nueva rama (git checkout -b feature/mi-mejora).
 
-Verificá que Ollama esté corriendo correctamente:
+Realiza tus cambios y haz commit (git commit -am 'Añadir nueva característica').
 
-ollama list
+Sube tus cambios a tu fork (git push origin feature/mi-mejora).
 
+Abre un Pull Request en este repositorio.
 
-Ejemplo de salida:
+📝 Licencia
 
-NAME               ID              SIZE      MODIFIED
-llama3.2:latest    a80c4f17acd5    2.0 GB    5 days ago
+Este proyecto está bajo la licencia MIT. Consulta el archivo LICENSE
+ para más detalles.
 
-🧩 Instalación
+💬 Contacto
 
-Cloná o creá el proyecto:
+Para preguntas o sugerencias, puedes abrir un issue
+ en este repositorio o contactarme directamente.
 
-mkdir PatCode && cd PatCode
-
-
-Crea un entorno virtual:
-
-python -m venv venv
-venv\Scripts\activate      # En Windows
-# source venv/bin/activate # En Linux/Mac
-
-
-Crea los archivos base:
-
-Guardá los siguientes archivos en tu carpeta:
-
-requirements.txt
-requests
-
-agents/pat_agent.py
-import requests
-import json
-
-class PatAgent:
-    def __init__(self, model="llama3.2:latest", memory_path="memory/memory.json"):
-        self.model = model
-        self.memory_path = memory_path
-        self.history = self.load_memory()
-
-    def load_memory(self):
-        try:
-            with open(self.memory_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return []
-
-    def save_memory(self):
-        with open(self.memory_path, "w", encoding="utf-8") as f:
-            json.dump(self.history, f, indent=2, ensure_ascii=False)
-
-    def ask(self, prompt):
-        self.history.append({"role": "user", "content": prompt})
-
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": self.model,
-                "prompt": self._build_context(),
-                "stream": False
-            }
-        )
-
-        data = response.json()
-        answer = data.get("response", "").strip()
-
-        self.history.append({"role": "assistant", "content": answer})
-        self.save_memory()
-        return answer
-
-    def _build_context(self):
-        context = ""
-        for msg in self.history[-5:]:
-            context += f"{msg['role'].capitalize()}: {msg['content']}\n"
-        return context
-
-main.py
-from agents.pat_agent import PatAgent
-
-def main():
-    print("🤖 Bienvenido a PatCode (versión local con Ollama)\n")
-    agent = PatAgent()
-
-    while True:
-        prompt = input("Tú: ")
-        if prompt.lower() in ["salir", "exit", "quit"]:
-            print("👋 Hasta luego.")
-            break
-
-        answer = agent.ask(prompt)
-        print(f"PatCode: {answer}\n")
-
-if __name__ == "__main__":
-    main()
-
-
-Instalá dependencias:
-
-pip install -r requirements.txt
-
-
-Ejecutá el asistente:
-
-python main.py
-
-💬 Ejemplo de uso
-🤖 Bienvenido a PatCode (versión local con Ollama)
-
-Tú: Explicame cómo usar listas en Python
-PatCode: Las listas en Python son estructuras de datos mutables...
-
-🧱 Arquitectura básica
-Usuario  →  PatCode (Python)
-         →  API de Ollama (localhost:11434)
-         →  Modelo LLM (Llama3.2, etc.)
-
-
-El flujo de comunicación es local:
-
-main.py recibe tu entrada.
-
-pat_agent.py envía la solicitud a http://localhost:11434/api/generate.
-
-Ollama procesa con el modelo y devuelve la respuesta.
-
-🌟 Próximas versiones (en desarrollo)
-
-✅ Versión actual: interacción en terminal + memoria básica
-🚧 Próximas mejoras:
-
-Soporte para análisis de proyectos completos (lectura de carpetas)
-
-Ejecución de comandos locales (compilar, testear, etc.)
-
-Integración con Git (commits automáticos y PRs)
-
-Resumen automático de sesiones largas
-
-Interfaz visual (opcional con Streamlit o Electron)
-
-🤝 Contribuciones
-
-¡Toda mejora es bienvenida!
-Podés:
-
-Abrir un issue para sugerencias o errores
-
-Crear un pull request con mejoras
-
-🧾 Licencia
-
-MIT License © 2025 — Creado por Gonza Cba
-Inspirado en Claude Code
- de Anthropic.
-Implementado con ❤️ sobre Ollama + Python.
+¡Gracias por usar PatCode!

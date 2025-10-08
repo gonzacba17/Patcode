@@ -1,11 +1,9 @@
-# config/__init__.py
-"""Configuración de PatCode"""
+"""
+Tests para PatCode
+"""
 
-# agents/__init__.py
-"""Agentes de PatCode"""
+import sys
+import os
 
-# tools/__init__.py
-"""Herramientas de PatCode"""
-from tools.file_tools import ReadFileTool, WriteFileTool, ListDirectoryTool
-
-__all__ = ['ReadFileTool', 'WriteFileTool', 'ListDirectoryTool']
+# Agregar el directorio raíz al path para importar módulos
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

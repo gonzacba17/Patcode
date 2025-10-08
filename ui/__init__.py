@@ -1,11 +1,11 @@
-# config/__init__.py
-"""Configuración de PatCode"""
+"""
+Interfaces de usuario para PatCode
+"""
 
-# agents/__init__.py
-"""Agentes de PatCode"""
+from .cli import CLI
+from .tui import TUI
 
-# tools/__init__.py
-"""Herramientas de PatCode"""
-from tools.file_tools import ReadFileTool, WriteFileTool, ListDirectoryTool
-
-__all__ = ['ReadFileTool', 'WriteFileTool', 'ListDirectoryTool']
+__all__ = [
+    'CLI',
+    'TUI'
+]

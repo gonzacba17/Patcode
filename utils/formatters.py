@@ -1,201 +1,216 @@
 """
-Formateadores para código y respuestas
+utils/formatters.py
+Utilidades para formatear texto y rutas
 """
 
-import re
-from .colors import Colors, colorize
+import os
+from pathlib import Path
+from typing import Optional
 
 
-def format_code(code, language="python"):
+def format_file_path(file_path: str, base_path: Optional[str] = None, max_length: int = 50) -> str:
+    """
+    Formatea una ruta de archivo para mostrarla de forma legible
+    
+    Args:
+        file_path: Ruta del archivo
+        base_path: Ruta base para hacer paths relativos
+        max_length: Longitud máxima del path (None para sin límite)
+        
+    Returns:
+        Ruta formateada
+    """
+    path = Path(file_path)
+    
+    # Convertir a ruta relativa si se proporciona base_path
+    if base_path:
+        try:
+            base = Path(base_path)
+            path = path.relative_to(base)
+        except ValueError:
+            pass  # No se puede hacer relativo, usar path absoluto
+    
+    # Convertir a string
+    path_str = str(path)
+    
+    # Normalizar separadores para el OS actual
+    path_str = path_str.replace('/', os.sep).replace('\\', os.sep)
+    
+    # Acortar si excede max_length
+    if max_length and len(path_str) > max_length:
+        # Mantener inicio y fin
+        half = (max_length - 3) // 2
+        path_str = path_str[:half] + "..." + path_str[-half:]
+    
+    return path_str
+
+
+def format_file_size(size_bytes: int) -> str:
+    """
+    Formatea un tamaño de archivo en bytes a formato legible
+    
+    Args:
+        size_bytes: Tamaño en bytes
+        
+    Returns:
+        String formateado (ej: "1.5 MB")
+    """
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} PB"
+
+
+def format_duration(seconds: float) -> str:
+    """
+    Formatea una duración en segundos a formato legible
+    
+    Args:
+        seconds: Duración en segundos
+        
+    Returns:
+        String formateado (ej: "1m 30s")
+    """
+    if seconds < 1:
+        return f"{seconds*1000:.0f}ms"
+    elif seconds < 60:
+        return f"{seconds:.1f}s"
+    elif seconds < 3600:
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes}m {secs}s"
+    else:
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        return f"{hours}h {minutes}m"
+
+
+def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
+    """
+    Trunca texto largo
+    
+    Args:
+        text: Texto a truncar
+        max_length: Longitud máxima
+        suffix: Sufijo a agregar si se trunca
+        
+    Returns:
+        Texto truncado
+    """
+    if len(text) <= max_length:
+        return text
+    return text[:max_length - len(suffix)] + suffix
+
+
+def format_code_block(code: str, language: str = "") -> str:
+    """
+    Formatea un bloque de código con delimitadores
+    
+    Args:
+        code: Código a formatear
+        language: Lenguaje del código
+        
+    Returns:
+        Código formateado
+    """
+    return f"```{language}\n{code}\n```"
+
+
+def format_list(items: list, bullet: str = "•") -> str:
+    """
+    Formatea una lista con bullets
+    
+    Args:
+        items: Lista de items
+        bullet: Carácter de bullet
+        
+    Returns:
+        Lista formateada
+    """
+    return "\n".join(f"{bullet} {item}" for item in items)
+
+
+def indent_text(text: str, spaces: int = 2) -> str:
+    """
+    Indenta cada línea de un texto
+    
+    Args:
+        text: Texto a indentar
+        spaces: Número de espacios
+        
+    Returns:
+        Texto indentado
+    """
+    indent = " " * spaces
+    return "\n".join(indent + line for line in text.split("\n"))
+
+
+def format_code(code: str, language: str = "python") -> str:
     """
     Formatea código con resaltado básico
     
     Args:
-        code (str): Código a formatear
-        language (str): Lenguaje de programación
-    
-    Returns:
-        str: Código formateado
-    """
-    lines = code.split('\n')
-    formatted_lines = []
-    
-    for i, line in enumerate(lines, 1):
-        line_num = colorize(f"{i:3d} │ ", Colors.DIM)
-        formatted_lines.append(line_num + line)
-    
-    return '\n'.join(formatted_lines)
-
-
-def format_response(response, max_width=80):
-    """
-    Formatea la respuesta del asistente
-    
-    Args:
-        response (str): Respuesta a formatear
-        max_width (int): Ancho máximo de línea
-    
-    Returns:
-        str: Respuesta formateada
-    """
-    # Detectar bloques de código
-    code_blocks = re.findall(r'```(\w+)?\n(.*?)```', response, re.DOTALL)
-    
-    formatted = response
-    
-    for lang, code in code_blocks:
-        formatted_code = format_code(code.strip(), lang or "python")
-        code_block = f"```{lang or ''}\n{code}```"
-        replacement = f"\n{colorize('┌' + '─' * 78 + '┐', Colors.CYAN)}\n"
-        replacement += formatted_code
-        replacement += f"\n{colorize('└' + '─' * 78 + '┘', Colors.CYAN)}\n"
-        formatted = formatted.replace(code_block, replacement)
-    
-    return formatted
-
-
-def format_error(error_message):
-    """
-    Formatea mensajes de error
-    
-    Args:
-        error_message (str): Mensaje de error
-    
-    Returns:
-        str: Error formateado
-    """
-    border = colorize("╔" + "═" * 78 + "╗", Colors.RED, Colors.BOLD)
-    footer = colorize("╚" + "═" * 78 + "╝", Colors.RED, Colors.BOLD)
-    
-    lines = error_message.split('\n')
-    formatted_lines = [border]
-    
-    for line in lines:
-        formatted_line = colorize(f"║ {line.ljust(77)}║", Colors.RED)
-        formatted_lines.append(formatted_line)
-    
-    formatted_lines.append(footer)
-    
-    return '\n'.join(formatted_lines)
-
-
-def format_diff_line(line, line_type):
-    """
-    Formatea una línea de diff
-    
-    Args:
-        line (str): Línea a formatear
-        line_type (str): Tipo de línea ('+', '-', ' ')
-    
-    Returns:
-        str: Línea formateada
-    """
-    if line_type == '+':
-        return colorize(f"+ {line}", Colors.GREEN)
-    elif line_type == '-':
-        return colorize(f"- {line}", Colors.RED)
-    else:
-        return colorize(f"  {line}", Colors.DIM)
-
-
-def format_file_tree(tree_dict, prefix="", is_last=True):
-    """
-    Formatea un árbol de archivos
-    
-    Args:
-        tree_dict (dict): Diccionario con estructura de archivos
-        prefix (str): Prefijo para la indentación
-        is_last (bool): Si es el último elemento
-    
-    Returns:
-        str: Árbol formateado
-    """
-    lines = []
-    items = list(tree_dict.items())
-    
-    for i, (name, content) in enumerate(items):
-        is_last_item = (i == len(items) - 1)
-        connector = "└── " if is_last_item else "├── "
+        code: Código a formatear
+        language: Lenguaje del código
         
-        if isinstance(content, dict):
-            # Es un directorio
-            folder_line = colorize(f"{prefix}{connector}📁 {name}/", Colors.BLUE, Colors.BOLD)
-            lines.append(folder_line)
-            
-            extension = "    " if is_last_item else "│   "
-            subtree = format_file_tree(content, prefix + extension, is_last_item)
-            lines.append(subtree)
-        else:
-            # Es un archivo
-            file_line = colorize(f"{prefix}{connector}📄 {name}", Colors.WHITE)
-            lines.append(file_line)
-    
-    return '\n'.join(lines)
-
-
-def format_table(headers, rows):
+    Returns:
+        Código formateado
     """
-    Formatea datos en tabla
+    # Por ahora, solo agregar bloques de código markdown
+    return f"```{language}\n{code}\n```"
+
+
+def format_json(data: dict, indent: int = 2) -> str:
+    """
+    Formatea un diccionario como JSON
     
     Args:
-        headers (list): Lista de encabezados
-        rows (list): Lista de filas
-    
+        data: Diccionario a formatear
+        indent: Espacios de indentación
+        
     Returns:
-        str: Tabla formateada
+        JSON formateado
     """
-    # Calcular anchos de columna
-    col_widths = [len(h) for h in headers]
+    import json
+    return json.dumps(data, indent=indent, ensure_ascii=False)
+
+
+def format_table(headers: list, rows: list) -> str:
+    """
+    Formatea datos en tabla ASCII
+    
+    Args:
+        headers: Lista de encabezados
+        rows: Lista de listas con datos
+        
+    Returns:
+        Tabla formateada
+    """
+    if not headers or not rows:
+        return ""
+    
+    # Calcular anchos de columnas
+    col_widths = [len(str(h)) for h in headers]
     for row in rows:
         for i, cell in enumerate(row):
             col_widths[i] = max(col_widths[i], len(str(cell)))
     
     # Crear separador
-    separator = "┼".join("─" * (w + 2) for w in col_widths)
-    top_border = "┌" + separator.replace("┼", "┬") + "┐"
-    mid_border = "├" + separator + "┤"
-    bottom_border = "└" + separator.replace("┼", "┴") + "┘"
+    separator = "+" + "+".join("-" * (w + 2) for w in col_widths) + "+"
     
-    # Formatear encabezados
-    header_line = "│"
-    for i, h in enumerate(headers):
-        header_line += f" {h.ljust(col_widths[i])} │"
+    # Crear encabezado
+    header_row = "|" + "|".join(f" {str(h):{w}} " for h, w in zip(headers, col_widths)) + "|"
     
-    # Formatear filas
-    formatted_rows = []
+    # Crear filas
+    data_rows = []
     for row in rows:
-        row_line = "│"
-        for i, cell in enumerate(row):
-            row_line += f" {str(cell).ljust(col_widths[i])} │"
-        formatted_rows.append(row_line)
+        data_row = "|" + "|".join(f" {str(cell):{w}} " for cell, w in zip(row, col_widths)) + "|"
+        data_rows.append(data_row)
     
-    # Combinar todo
-    table = [
-        colorize(top_border, Colors.CYAN),
-        colorize(header_line, Colors.CYAN, Colors.BOLD),
-        colorize(mid_border, Colors.CYAN)
-    ]
+    # Unir todo
+    result = [separator, header_row, separator]
+    result.extend(data_rows)
+    result.append(separator)
     
-    for row_line in formatted_rows:
-        table.append(colorize(row_line, Colors.WHITE))
-    
-    table.append(colorize(bottom_border, Colors.CYAN))
-    
-    return '\n'.join(table)
-
-
-def truncate_text(text, max_length=100, suffix="..."):
-    """
-    Trunca texto si es muy largo
-    
-    Args:
-        text (str): Texto a truncar
-        max_length (int): Longitud máxima
-        suffix (str): Sufijo para indicar truncamiento
-    
-    Returns:
-        str: Texto truncado
-    """
-    if len(text) <= max_length:
-        return text
-    return text[:max_length - len(suffix)] + suffix
+    return "\n".join(result)

@@ -1,11 +1,22 @@
 """
-Módulo de colores para la terminal
+utils/colors.py
+Utilidades para colorear texto en terminal
 """
 
+import sys
+
+
 class Colors:
-    """Códigos ANSI para colorear texto en terminal"""
+    """Códigos ANSI para colores en terminal"""
     
     # Colores básicos
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+    ITALIC = '\033[3m'
+    UNDERLINE = '\033[4m'
+    
+    # Colores de texto
     BLACK = '\033[30m'
     RED = '\033[31m'
     GREEN = '\033[32m'
@@ -25,18 +36,6 @@ class Colors:
     BRIGHT_CYAN = '\033[96m'
     BRIGHT_WHITE = '\033[97m'
     
-    # Estilos
-    BOLD = '\033[1m'
-    DIM = '\033[2m'
-    ITALIC = '\033[3m'
-    UNDERLINE = '\033[4m'
-    BLINK = '\033[5m'
-    REVERSE = '\033[7m'
-    HIDDEN = '\033[8m'
-    
-    # Reset
-    RESET = '\033[0m'
-    
     # Colores de fondo
     BG_BLACK = '\033[40m'
     BG_RED = '\033[41m'
@@ -46,57 +45,82 @@ class Colors:
     BG_MAGENTA = '\033[45m'
     BG_CYAN = '\033[46m'
     BG_WHITE = '\033[47m'
+    
+    @staticmethod
+    def is_supported() -> bool:
+        """Verifica si la terminal soporta colores"""
+        # En Windows, verificar si se habilitó el soporte ANSI
+        if sys.platform == "win32":
+            try:
+                import os
+                # Intentar habilitar colores en Windows
+                os.system('')
+                return True
+            except:
+                return False
+        return True
 
 
-def colorize(text, color=None, style=None, bg_color=None):
+def colorize(text: str, color: str = Colors.RESET, bold: bool = False) -> str:
     """
-    Colorea un texto para terminal
+    Colorea un texto
     
     Args:
-        text (str): Texto a colorear
-        color (str): Color del texto (ej: Colors.GREEN)
-        style (str): Estilo del texto (ej: Colors.BOLD)
-        bg_color (str): Color de fondo
-    
+        text: Texto a colorear
+        color: Color a aplicar (usar Colors.*)
+        bold: Si debe estar en negrita
+        
     Returns:
-        str: Texto coloreado
+        Texto coloreado con códigos ANSI
     """
+    if not Colors.is_supported():
+        return text
+    
     result = ""
-    
-    if style:
-        result += style
-    if bg_color:
-        result += bg_color
-    if color:
-        result += color
-    
-    result += text + Colors.RESET
-    
+    if bold:
+        result += Colors.BOLD
+    result += color + text + Colors.RESET
     return result
 
 
-def print_success(message):
-    """Imprime mensaje de éxito en verde"""
-    print(colorize(f"✓ {message}", Colors.BRIGHT_GREEN, Colors.BOLD))
+def print_colored(text: str, color: str = Colors.RESET, bold: bool = False, end: str = '\n'):
+    """
+    Imprime texto coloreado
+    
+    Args:
+        text: Texto a imprimir
+        color: Color a aplicar
+        bold: Si debe estar en negrita
+        end: Carácter de fin de línea
+    """
+    print(colorize(text, color, bold), end=end)
 
 
-def print_error(message):
-    """Imprime mensaje de error en rojo"""
-    print(colorize(f"✗ {message}", Colors.BRIGHT_RED, Colors.BOLD))
+# Funciones de conveniencia
+def print_success(text: str):
+    """Imprime texto de éxito en verde"""
+    print_colored(f"✅ {text}", Colors.GREEN)
 
 
-def print_warning(message):
-    """Imprime mensaje de advertencia en amarillo"""
-    print(colorize(f"⚠ {message}", Colors.BRIGHT_YELLOW, Colors.BOLD))
+def print_error(text: str):
+    """Imprime texto de error en rojo"""
+    print_colored(f"❌ {text}", Colors.RED, bold=True)
 
 
-def print_info(message):
-    """Imprime mensaje informativo en azul"""
-    print(colorize(f"ℹ {message}", Colors.BRIGHT_BLUE))
+def print_warning(text: str):
+    """Imprime advertencia en amarillo"""
+    print_colored(f"⚠️  {text}", Colors.YELLOW)
 
 
-def print_header(message):
-    """Imprime encabezado destacado"""
-    print(colorize(f"\n{'='*60}", Colors.CYAN))
-    print(colorize(f"  {message}", Colors.CYAN, Colors.BOLD))
-    print(colorize(f"{'='*60}\n", Colors.CYAN))
+def print_info(text: str):
+    """Imprime información en cyan"""
+    print_colored(f"ℹ️  {text}", Colors.CYAN)
+
+
+# Habilitar colores en Windows
+if sys.platform == "win32":
+    try:
+        import os
+        os.system('')  # Habilita secuencias ANSI en Windows 10+
+    except:
+        pass

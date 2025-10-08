@@ -1,3 +1,32 @@
-typer
-rich
-gitpython
+# Core dependencies
+requests>=2.31.0
+
+# Terminal UI y colores
+rich>=13.7.0              # Terminal formatting, progress bars, syntax highlighting
+prompt-toolkit>=3.0.43    # Mejor input con autocompletado y shortcuts
+
+# Code analysis
+ast-comments>=1.2.2       # Better AST parsing with comments
+autopep8>=2.0.4          # Code formatting
+pylint>=3.0.3            # Static analysis
+
+# Git integration (optional pero útil)
+gitpython>=3.1.40        # Git operations desde Python
+
+# Testing (para run_tests tool)
+pytest>=7.4.3
+pytest-cov>=4.1.0
+
+# File handling
+pathspec>=0.11.2         # .gitignore style pattern matching
+watchdog>=3.0.0          # File system monitoring (para futuras features)
+
+# Performance
+ujson>=5.9.0             # JSON más rápido
+cachetools>=5.3.2        # Caching para contexto
+
+# Optional: Web UI (comentado por defecto)
+# streamlit>=1.29.0      # Para interfaz web
+# fastapi>=0.108.0       # API REST
+# uvicorn>=0.25.0        # ASGI server
+# uvicorn>=0.25.0        # ASGI server

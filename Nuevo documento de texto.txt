@@ -1,0 +1,61 @@
+PatCode/
+│
+├── main.py                          # Punto de entrada principal
+├── requirements.txt                 # Dependencias Python
+├── README.md                        # Documentación del proyecto
+├── .gitignore                       # Archivos a ignorar en Git
+│
+├── config/                          # ⚙️ CONFIGURACIÓN
+│   ├── __init__.py
+│   ├── settings.py                  # Configuración general (URLs, paths, límites)
+│   ├── prompts.py                   # System prompts y plantillas
+│   └── models.py                    # Configuración de modelos Ollama
+│
+├── agents/                          # 🤖 AGENTES IA
+│   ├── __init__.py
+│   ├── pat_agent.py                 # Agente principal con herramientas
+│   ├── agentic_loop.py              # Loop de razonamiento-acción
+│   ├── tool_parser.py               # Parser de llamadas a herramientas
+│   ├── planner.py                   # Planificador de tareas complejas
+│   └── memory/
+│       ├── memory.json              # Historial de conversaciones
+│       └── context_cache.json       # Cache de contexto de proyecto
+│
+├── tools/                           # 🔧 HERRAMIENTAS
+│   ├── __init__.py
+│   ├── base_tool.py                 # Clase base abstracta
+│   ├── file_tools.py                # Leer/escribir archivos
+│   ├── directory_tools.py           # Navegación de directorios
+│   ├── shell_tools.py               # Ejecución de comandos shell
+│   ├── search_tools.py              # Búsqueda en código
+│   ├── git_tools.py                 # Operaciones Git
+│   └── analysis_tools.py            # Análisis estático de código
+│
+├── context/                         # 📊 ANÁLISIS DE CONTEXTO
+│   ├── __init__.py
+│   ├── project_analyzer.py          # Analiza estructura del proyecto
+│   ├── code_indexer.py              # Indexa y mapea código
+│   ├── dependency_mapper.py         # Mapea dependencias
+│   └── semantic_search.py           # Búsqueda semántica en código
+│
+├── utils/                           # 🛠️ UTILIDADES
+│   ├── __init__.py
+│   ├── formatters.py                # Formateo de output
+│   ├── diff_viewer.py               # Visualización de cambios
+│   ├── validators.py                # Validaciones de seguridad
+│   ├── logger.py                    # Sistema de logging
+│   └── colors.py                    # Colores para terminal
+│
+├── ui/                              # 🎨 INTERFAZ (Opcional - Fase 4)
+│   ├── __init__.py
+│   ├── cli.py                       # Interfaz de línea de comandos mejorada
+│   ├── tui.py                       # Terminal UI (con rich/textual)
+│   └── web.py                       # Interfaz web (con Streamlit)
+│
+└── tests/                           # ✅ TESTS
+    ├── __init__.py
+    ├── test_tools.py                # Tests de herramientas
+    ├── test_agent.py                # Tests del agente
+    ├── test_parser.py               # Tests del parser
+    └── fixtures/                    # Archivos de prueba
+        └── sample_project/

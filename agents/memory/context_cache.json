@@ -1,0 +1,42 @@
+{
+  "version": "1.0.0",
+  "last_updated": null,
+  "workspace_path": null,
+  "project_info": {
+    "name": null,
+    "type": null,
+    "language": null,
+    "framework": null,
+    "has_git": false
+  },
+  "file_structure": {
+    "directories": [],
+    "files": [],
+    "total_files": 0,
+    "total_directories": 0
+  },
+  "code_index": {
+    "classes": [],
+    "functions": [],
+    "imports": [],
+    "dependencies": []
+  },
+  "recent_files": [],
+  "session_stats": {
+    "files_read": 0,
+    "files_written": 0,
+    "commands_executed": 0,
+    "tools_used": {},
+    "session_start": null
+  },
+  "user_preferences": {
+    "preferred_language": "es-AR",
+    "verbosity": "normal",
+    "auto_save": true
+  },
+  "notes": [
+    "Este archivo almacena contexto del proyecto actual",
+    "Se actualiza automáticamente durante el uso de PatCode",
+    "No editar manualmente a menos que sea necesario"
+  ]
+}

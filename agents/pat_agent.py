@@ -1,306 +1,214 @@
-"""
-agents/pat_agent.py
-Agente principal de PatCode con integración completa de herramientas
-"""
-
-import json
-import re
 import requests
-from pathlib import Path
-from typing import Dict, Any, List, Optional
-
-# Importar herramientas
-try:
-    from tools.file_tools import ReadFileTool, WriteFileTool, ListDirectoryTool
-    from tools.shell_tools import ExecuteCommandTool, SearchFilesTool
-    TOOLS_AVAILABLE = True
-except ImportError:
-    TOOLS_AVAILABLE = False
-
+import json
+import os
+from typing import List, Dict, Optional
+from datetime import datetime
 
 class PatAgent:
-    """Agente principal que interactúa con Ollama y gestiona herramientas"""
+    """Agente de IA para PatCode con mejoras robustas"""
     
-    def __init__(self, 
-                 model: str = "qwen2.5-coder:7b",  # Modelo mejorado por defecto
-                 workspace_root: str = ".",
-                 memory_path: str = "agents/memory/memory.json",
-                 ollama_url: str = "http://localhost:11434"):
-        """
-        Inicializa el agente PatCode
-        
-        Args:
-            model: Modelo de Ollama a usar
-            workspace_root: Directorio raíz del proyecto
-            memory_path: Ruta al archivo de memoria
-            ollama_url: URL del servidor Ollama
-        """
+    def __init__(
+        self, 
+        model: str = "llama3.2:latest", 
+        memory_path: str = "memory/memory.json",
+        max_history: int = 50,
+        system_prompt: Optional[str] = None
+    ):
         self.model = model
-        self.workspace_root = Path(workspace_root).resolve()
-        self.memory_file = Path(memory_path)
-        self.ollama_url = ollama_url
+        self.memory_path = memory_path
+        self.max_history = max_history
+        self.base_url = "http://localhost:11434"
+        self.system_prompt = system_prompt or self._default_system_prompt()
+        
+        # Crear directorio de memoria si no existe
+        os.makedirs(os.path.dirname(memory_path) or ".", exist_ok=True)
+        
+        # Cargar historial
         self.history = self.load_memory()
         
-        # Inicializar herramientas
-        self.tools = {}
-        if TOOLS_AVAILABLE:
-            self._init_tools()
+        # Verificar conexión con Ollama
+        if not self._check_ollama_connection():
+            raise ConnectionError(
+                "❌ No se puede conectar con Ollama.\n"
+                "Asegurate de que esté corriendo: 'ollama serve'"
+            )
     
-    def _init_tools(self):
-        """Inicializa todas las herramientas disponibles"""
-        workspace = str(self.workspace_root)
-        
-        self.tools = {
-            "read_file": ReadFileTool(workspace_root=workspace),
-            "write_file": WriteFileTool(workspace_root=workspace),
-            "list_directory": ListDirectoryTool(workspace_root=workspace),
-            "execute_command": ExecuteCommandTool(workspace_root=workspace),
-            "search_files": SearchFilesTool(workspace_root=workspace),
-        }
+    def _default_system_prompt(self) -> str:
+        """System prompt por defecto para PatCode"""
+        return """Sos PatCode, un asistente de programación experto y amigable.
+
+Características:
+- Explicás conceptos de forma clara y concisa
+- Proporcionás ejemplos de código prácticos
+- Sugerís mejores prácticas
+- Ayudás a debuggear problemas
+- Usás un tono cercano (vos argentino)
+- Siempre incluís código funcional cuando es relevante
+
+Cuando te pidan código:
+1. Explicá brevemente qué hace
+2. Mostrá el código con comentarios
+3. Agregá notas sobre posibles mejoras"""
+    
+    def _check_ollama_connection(self) -> bool:
+        """Verifica que Ollama esté corriendo"""
+        try:
+            response = requests.get(f"{self.base_url}/api/tags", timeout=3)
+            return response.status_code == 200
+        except requests.exceptions.RequestException:
+            return False
     
     def load_memory(self) -> List[Dict[str, str]]:
-        """Carga el historial de memoria desde archivo JSON"""
+        """Carga el historial desde el archivo JSON"""
         try:
-            if self.memory_file.exists():
-                with open(self.memory_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            else:
-                self.memory_file.parent.mkdir(parents=True, exist_ok=True)
-                return []
-        except Exception as e:
+            if os.path.exists(self.memory_path):
+                with open(self.memory_path, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+                    # Limitar al max_history más reciente
+                    return history[-self.max_history:]
+            return []
+        except (json.JSONDecodeError, IOError) as e:
             print(f"⚠️  Error cargando memoria: {e}")
             return []
     
     def save_memory(self):
-        """Guarda el historial de memoria en archivo JSON"""
+        """Guarda el historial en el archivo JSON"""
         try:
-            self.memory_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.memory_file, "w", encoding="utf-8") as f:
-                json.dump(self.history, f, indent=2, ensure_ascii=False)
-        except Exception as e:
+            # Mantener solo max_history mensajes
+            trimmed_history = self.history[-self.max_history:]
+            
+            with open(self.memory_path, "w", encoding="utf-8") as f:
+                json.dump(trimmed_history, f, indent=2, ensure_ascii=False)
+            
+            self.history = trimmed_history
+        except IOError as e:
             print(f"⚠️  Error guardando memoria: {e}")
     
-    def ask(self, prompt: str) -> str:
+    def clear_memory(self):
+        """Limpia toda la memoria de conversación"""
+        self.history = []
+        self.save_memory()
+        print("🧹 Memoria limpiada")
+    
+    def ask(self, prompt: str, stream: bool = True) -> str:
         """
-        Envía una pregunta al agente y obtiene respuesta
+        Envía un prompt al modelo y obtiene la respuesta
         
         Args:
             prompt: Pregunta o instrucción del usuario
-            
+            stream: Si es True, imprime la respuesta en tiempo real
+        
         Returns:
-            Respuesta generada por el modelo
+            Respuesta completa del modelo
         """
-        # Detectar si necesita usar herramientas
-        if self._should_use_tools(prompt):
-            return self._ask_with_tools(prompt)
-        else:
-            return self._ask_simple(prompt)
-    
-    def _should_use_tools(self, prompt: str) -> bool:
-        """Determina si el prompt requiere usar herramientas"""
-        tool_keywords = [
-            "archivo", "file", "leer", "read", "escribe", "write",
-            "lista", "list", "directorio", "directory", "busca", "search",
-            "muestra", "show", "ver", "see", "analiza", "analyze",
-            "proyecto", "project", "estructura", "structure",
-            "código", "code", "archivos principales", "main files",
-            "resumen", "summary", "qué hace", "what does"
-        ]
-        
-        prompt_lower = prompt.lower()
-        return any(keyword in prompt_lower for keyword in tool_keywords)
-    
-    def _ask_with_tools(self, prompt: str) -> str:
-        """Procesa pregunta con acceso a herramientas"""
-        # Recopilar información del proyecto
-        tool_context = self._gather_tool_context(prompt)
-        
-        # Construir prompt enriquecido
-        enriched_prompt = self._build_enriched_prompt(prompt, tool_context)
-        
-        # Agregar al historial
+        # Agregar mensaje del usuario al historial
         self.history.append({"role": "user", "content": prompt})
         
-        # Obtener respuesta
-        response = self._call_ollama(enriched_prompt)
-        
-        if response:
-            self.history.append({"role": "assistant", "content": response})
-            self.save_memory()
-        
-        return response
-    
-    def _ask_simple(self, prompt: str) -> str:
-        """Procesa pregunta simple sin herramientas"""
-        self.history.append({"role": "user", "content": prompt})
-        
-        context = self._build_simple_context(prompt)
-        response = self._call_ollama(context)
-        
-        if response:
-            self.history.append({"role": "assistant", "content": response})
-            self.save_memory()
-        
-        return response
-    
-    def _gather_tool_context(self, prompt: str) -> str:
-        """Recopila información usando herramientas"""
-        parts = []
-        prompt_lower = prompt.lower()
-        
-        # Información básica del proyecto
-        if any(w in prompt_lower for w in ["estructura", "archivos", "proyecto", "resumen", "structure", "files"]):
-            result = self.execute_tool("list_directory", path=".")
-            if result.get("success"):
-                files = result.get("files", [])
-                dirs = result.get("directories", [])
-                
-                # Archivos importantes
-                important = [f for f in files if f in [
-                    "main.py", "README.md", "requirements.txt", 
-                    "setup.py", "package.json", ".gitignore"
-                ]]
-                
-                parts.append("📂 **Project Structure:**")
-                parts.append(f"Location: {self.workspace_root}\n")
-                
-                if important:
-                    parts.append("**Key Files:**")
-                    for f in important:
-                        parts.append(f"  - {f}")
-                
-                main_dirs = [d for d in dirs if not d.startswith('.') and 
-                            d not in ['__pycache__', 'venv', 'env', 'node_modules']]
-                if main_dirs:
-                    parts.append("\n**Main Directories:**")
-                    for d in main_dirs[:8]:
-                        parts.append(f"  - {d}/")
-                
-                py_files = [f for f in files if f.endswith('.py')]
-                if py_files:
-                    parts.append(f"\n**Python Files:** {len(py_files)} total")
-        
-        # Leer README si existe
-        if any(w in prompt_lower for w in ["readme", "resumen", "documentación", "summary"]):
-            readme = self.execute_tool("read_file", file_path="README.md")
-            if readme.get("success"):
-                content = readme.get("content", "")
-                parts.append("\n📄 **README.md Content:**")
-                parts.append("```")
-                parts.append(content[:2500] if len(content) > 2500 else content)
-                parts.append("```")
-        
-        return "\n".join(parts) if parts else "No additional project information available."
-    
-    def _build_enriched_prompt(self, user_prompt: str, tool_context: str) -> str:
-        """Construye prompt enriquecido con contexto de herramientas"""
-        return f"""You are PatCode, an expert AI programming assistant.
-
-CRITICAL INSTRUCTION: The following is REAL DATA from the actual project.
-You MUST base your response ONLY on this information.
-DO NOT invent, assume, or hallucinate any details not present below.
-
-====================
-PROJECT INFORMATION:
-====================
-{tool_context}
-====================
-
-USER QUESTION: {user_prompt}
-
-RESPONSE RULES:
-1. Answer based ONLY on the project information above
-2. If information is insufficient, say "I don't have information about..."
-3. Be specific and cite actual file names you see
-4. Use markdown formatting
-5. Be concise but helpful
-
-Your response:"""
-    
-    def _build_simple_context(self, prompt: str) -> str:
-        """Construye contexto simple para preguntas generales"""
-        system = f"""You are PatCode, an expert programming assistant working in: {self.workspace_root}
-
-You help with:
-- Code explanations and architecture
-- Debugging and error analysis  
-- Best practices and design patterns
-- Writing clean, maintainable code
-
-Be concise, practical, and helpful."""
-        
-        # Incluir últimos mensajes
-        recent = self.history[-3:]
-        context = f"{system}\n\n"
-        
-        for msg in recent:
-            role = msg.get("role", "").capitalize()
-            content = msg.get("content", "")
-            context += f"{role}: {content}\n"
-        
-        context += f"User: {prompt}\nAssistant:"
-        
-        return context
-    
-    def _call_ollama(self, prompt: str) -> str:
-        """Realiza llamada a Ollama"""
         try:
-            # Parámetros optimizados según el modelo
-            options = {
-                "temperature": 0.3,  # Más determinístico para código
-                "num_predict": 2000,
-                "top_p": 0.9,
-                "top_k": 40,
-                "repeat_penalty": 1.1
-            }
+            # Preparar mensajes para la API de chat
+            messages = self._build_messages()
             
+            # Llamada a la API con streaming
             response = requests.post(
-                f"{self.ollama_url}/api/generate",
+                f"{self.base_url}/api/chat",
                 json={
                     "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": options
+                    "messages": messages,
+                    "stream": stream
                 },
+                stream=stream,
                 timeout=120
             )
             
-            if response.status_code == 200:
-                data = response.json()
-                answer = data.get("response", "").strip()
-                return answer if answer else "Lo siento, no pude generar una respuesta."
+            response.raise_for_status()
+            
+            if stream:
+                return self._handle_streaming_response(response)
             else:
-                return f"❌ Error del servidor Ollama: {response.status_code}"
-        
-        except requests.exceptions.ConnectionError:
-            return "❌ No se pudo conectar a Ollama. ¿Está corriendo? (ollama serve)"
+                data = response.json()
+                answer = data.get("message", {}).get("content", "").strip()
+                self.history.append({"role": "assistant", "content": answer})
+                self.save_memory()
+                return answer
+                
         except requests.exceptions.Timeout:
-            return "❌ Timeout esperando respuesta de Ollama"
+            error_msg = "⏱️  Timeout: el modelo tardó demasiado en responder"
+            print(error_msg)
+            return error_msg
+        except requests.exceptions.RequestException as e:
+            error_msg = f"❌ Error de conexión: {str(e)}"
+            print(error_msg)
+            return error_msg
         except Exception as e:
-            return f"❌ Error inesperado: {str(e)}"
+            error_msg = f"❌ Error inesperado: {str(e)}"
+            print(error_msg)
+            return error_msg
     
-    def execute_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
-        """Ejecuta una herramienta específica"""
-        if not TOOLS_AVAILABLE or tool_name not in self.tools:
-            return {"success": False, "error": f"Tool not available: {tool_name}"}
+    def _handle_streaming_response(self, response) -> str:
+        """Maneja la respuesta en streaming de Ollama"""
+        full_response = ""
         
         try:
-            return self.tools[tool_name].execute(**kwargs)
+            for line in response.iter_lines():
+                if line:
+                    data = json.loads(line.decode('utf-8'))
+                    
+                    if 'message' in data:
+                        chunk = data['message'].get('content', '')
+                        print(chunk, end='', flush=True)
+                        full_response += chunk
+                    
+                    # Ollama envía done: true al terminar
+                    if data.get('done', False):
+                        break
+            
+            print()  # Nueva línea al terminar
+            
+            # Guardar respuesta completa en el historial
+            self.history.append({"role": "assistant", "content": full_response})
+            self.save_memory()
+            
+            return full_response
+            
         except Exception as e:
-            return {"success": False, "error": f"Error executing {tool_name}: {str(e)}"}
+            print(f"\n⚠️  Error en streaming: {e}")
+            return full_response
     
-    def list_available_tools(self) -> List[str]:
-        """Retorna lista de herramientas disponibles"""
-        return list(self.tools.keys()) if TOOLS_AVAILABLE else []
-    
-    def get_tool_info(self, tool_name: str) -> Optional[Dict[str, Any]]:
-        """Obtiene información de una herramienta específica"""
-        if not TOOLS_AVAILABLE or tool_name not in self.tools:
-            return None
+    def _build_messages(self) -> List[Dict[str, str]]:
+        """Construye la lista de mensajes para la API de chat"""
+        messages = [{"role": "system", "content": self.system_prompt}]
         
-        tool = self.tools[tool_name]
+        # Agregar historial (últimos N mensajes para no saturar contexto)
+        context_limit = 20  # Últimos 10 intercambios
+        recent_history = self.history[-context_limit:]
+        messages.extend(recent_history)
+        
+        return messages
+    
+    def get_stats(self) -> Dict:
+        """Retorna estadísticas de uso"""
         return {
-            "name": tool_name,
-            "description": getattr(tool, 'description', "Sin descripción"),
-            "schema": tool.get_schema() if hasattr(tool, 'get_schema') else {}
+            "total_messages": len(self.history),
+            "user_messages": sum(1 for m in self.history if m['role'] == 'user'),
+            "assistant_messages": sum(1 for m in self.history if m['role'] == 'assistant'),
+            "memory_size_kb": os.path.getsize(self.memory_path) / 1024 if os.path.exists(self.memory_path) else 0
         }
+    
+    def export_conversation(self, output_path: str = "conversation_export.md"):
+        """Exporta la conversación actual a un archivo Markdown"""
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(f"# PatCode Conversation Export\n")
+                f.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"**Model:** {self.model}\n\n")
+                f.write("---\n\n")
+                
+                for msg in self.history:
+                    role = "👤 Usuario" if msg['role'] == 'user' else "🤖 PatCode"
+                    f.write(f"## {role}\n\n")
+                    f.write(f"{msg['content']}\n\n")
+                    f.write("---\n\n")
+            
+            print(f"✅ Conversación exportada a: {output_path}")
+        except IOError as e:
+            print(f"❌ Error exportando: {e}")

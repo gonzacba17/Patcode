@@ -15,19 +15,19 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 
-# Importar agente (cuando esté implementado)
+# Importar agente
 try:
     from agents.pat_agent import PatAgent
-except ImportError:
-    print("⚠️  Advertencia: No se pudo importar PatAgent")
+except ImportError as e:
+    print(f"⚠️  Advertencia: No se pudo importar PatAgent - {e}")
     PatAgent = None
 
 # Importar tools
 try:
     from tools import list_tools, get_tools_by_category
     TOOLS_AVAILABLE = True
-except ImportError:
-    print("⚠️  Advertencia: Módulo tools no disponible")
+except ImportError as e:
+    print(f"⚠️  Advertencia: Módulo tools no disponible - {e}")
     TOOLS_AVAILABLE = False
 
 
@@ -82,16 +82,19 @@ def show_tools():
         console.print("⚠️  Herramientas no disponibles", style="yellow")
         return
     
-    categories = get_tools_by_category()
-    
-    console.print("\n📦 Herramientas Disponibles:\n", style="bold cyan")
-    
-    for category, tools in categories.items():
-        console.print(f"  • {category.replace('_', ' ').title()}", style="bold green")
-        for tool in tools:
-            console.print(f"    - {tool}", style="dim")
-    
-    console.print(f"\n✅ Total: {sum(len(tools) for tools in categories.values())} herramientas\n")
+    try:
+        categories = get_tools_by_category()
+        
+        console.print("\n🔧 Herramientas Disponibles:\n", style="bold cyan")
+        
+        for category, tools in categories.items():
+            console.print(f"  • {category.replace('_', ' ').title()}", style="bold green")
+            for tool in tools:
+                console.print(f"    - {tool}", style="dim")
+        
+        console.print(f"\n✅ Total: {sum(len(tools) for tools in categories.values())} herramientas\n")
+    except Exception as e:
+        console.print(f"⚠️  Error mostrando herramientas: {e}", style="yellow")
 
 
 def show_context(workspace_root: Path):
@@ -112,8 +115,11 @@ def show_context(workspace_root: Path):
         console.print(f"  • Tipo: {', '.join(project_types)}", style="blue")
     
     # Contar archivos
-    py_files = list(workspace_root.rglob("*.py"))
-    console.print(f"  • Archivos Python: {len(py_files)}", style="yellow")
+    try:
+        py_files = list(workspace_root.rglob("*.py"))
+        console.print(f"  • Archivos Python: {len(py_files)}", style="yellow")
+    except:
+        pass
     
     console.print()
 
@@ -144,14 +150,17 @@ def process_command(command: str, agent, workspace_root: Path) -> bool:
     elif command.startswith("/tools "):
         category = command.replace("/tools ", "")
         if TOOLS_AVAILABLE:
-            categories = get_tools_by_category()
-            if category in categories:
-                console.print(f"\n🔧 {category.replace('_', ' ').title()}:\n", style="bold green")
-                for tool in categories[category]:
-                    console.print(f"  - {tool}")
-                console.print()
-            else:
-                console.print(f"⚠️  Categoría no encontrada: {category}", style="yellow")
+            try:
+                categories = get_tools_by_category()
+                if category in categories:
+                    console.print(f"\n🔧 {category.replace('_', ' ').title()}:\n", style="bold green")
+                    for tool in categories[category]:
+                        console.print(f"  - {tool}")
+                    console.print()
+                else:
+                    console.print(f"⚠️  Categoría no encontrada: {category}", style="yellow")
+            except Exception as e:
+                console.print(f"⚠️  Error: {e}", style="yellow")
     
     elif command == "/history":
         if agent and hasattr(agent, 'history'):
@@ -180,7 +189,21 @@ def process_command(command: str, agent, workspace_root: Path) -> bool:
         file_path = command.replace("/analyze ", "").strip()
         console.print(f"🔍 Analizando: {file_path}", style="cyan")
         # TODO: Implementar análisis con herramientas
-        console.print("⚠️  Función en desarrollo\n", style="yellow")
+        if agent:
+            try:
+                # Leer archivo usando herramienta
+                result = agent.execute_tool("read_file", file_path=file_path)
+                if result.get("success"):
+                    content = result.get("content", "")
+                    console.print(f"\n📄 Contenido ({len(content)} caracteres):\n", style="green")
+                    console.print(content[:500] + "..." if len(content) > 500 else content)
+                    console.print()
+                else:
+                    console.print(f"⚠️  Error: {result.get('error')}", style="yellow")
+            except Exception as e:
+                console.print(f"⚠️  Error: {e}", style="yellow")
+        else:
+            console.print("⚠️  Agente no disponible\n", style="yellow")
     
     else:
         console.print(f"⚠️  Comando no reconocido: {command}", style="yellow")
@@ -200,8 +223,17 @@ def main():
     # Inicializar agente
     if PatAgent:
         try:
-            agent = PatAgent(workspace_root=str(workspace_root))
-            console.print("✅ Agente inicializado correctamente\n", style="green")
+            # Modo debug temporal - puedes cambiar a False después
+            agent = PatAgent(workspace_root=str(workspace_root), debug=True)
+            console.print("✅ Agente inicializado correctamente", style="green")
+            
+            # Mostrar herramientas disponibles
+            if agent.tools:
+                console.print(f"✅ {len(agent.tools)} herramientas cargadas", style="green")
+            else:
+                console.print("⚠️  Sin herramientas disponibles", style="yellow")
+            
+            console.print()
         except Exception as e:
             console.print(f"⚠️  Error inicializando agente: {e}\n", style="yellow")
             agent = None
@@ -280,29 +312,6 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         console.print(f"\n❌ Error fatal: {e}\n", style="bold red")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
-
-# main.py
-from agents.pat_agent import PatAgent
-
-def main():
-    try:
-        agent = PatAgent()
-        print("🧠 PatCode listo. Escribí '/exit' para salir.")
-    except Exception as e:
-        print(f"⚠️ Error al iniciar PatAgent: {e}")
-        agent = None
-
-    while True:
-        user_input = input("Tú: ")
-        if user_input.lower() in ["/exit", "exit", "quit"]:
-            break
-
-        if agent:
-            response = agent.process(user_input)
-            print(response)
-        else:
-            print("⚠️ Agente no disponible. Usa comandos limitados.")
-
-if __name__ == "__main__":
-    main()

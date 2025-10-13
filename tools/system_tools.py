@@ -1,3 +1,54 @@
+from datetime import datetime
+import platform
+import os
+from typing import Dict, Any
+
+
+class SystemTools:
+    """Herramientas de información del sistema"""
+    
+    def __init__(self):
+        pass
+    
+    def get_current_datetime(self) -> Dict[str, str]:
+        """
+        Obtiene la fecha y hora actual.
+        
+        Returns:
+            Dict con fecha, hora y formato completo
+        """
+        now = datetime.now()
+        
+        return {
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M:%S"),
+            "datetime": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "day_name": now.strftime("%A"),
+            "formatted": now.strftime("%A, %d de %B de %Y - %H:%M:%S")
+        }
+    
+    def get_system_info(self) -> Dict[str, str]:
+        """
+        Obtiene información del sistema operativo.
+        
+        Returns:
+            Dict con información del sistema
+        """
+        return {
+            "os": platform.system(),
+            "os_version": platform.version(),
+            "architecture": platform.machine(),
+            "python_version": platform.python_version(),
+            "cwd": os.getcwd()
+        }
+
+
+# ============================================================================
+# MEJORA 2: Actualizar Tool Agent con System Tools y Mejor System Prompt
+# ============================================================================
+# Archivo: agents/tool_agent.py (ACTUALIZADO)
+# ============================================================================
+
 import requests
 import json
 from typing import List, Dict, Any, Optional, Callable
@@ -9,6 +60,57 @@ sys.path.append(str(Path(__file__).parent.parent))
 from tools.file_operations import FileOperations
 from tools.shell_operations import ShellOperations
 from tools.git_operations import GitOperations
+from tools.system_tools import SystemTools
+
+
+# System Prompt mejorado
+SYSTEM_PROMPT = """Eres PatCode, un asistente de programación experto y autónomo que trabaja como un ingeniero senior.
+
+IDENTIDAD:
+- Eres preciso, metódico y profesional
+- Siempre ejecutas las acciones que te piden, no solo explicas cómo hacerlas
+- Cuando te piden crear algo, lo creas directamente
+- Cuando te piden información del sistema (fecha, hora), usas las herramientas apropiadas
+
+REGLAS DE ORO:
+1. USA LAS HERRAMIENTAS: Si te piden hacer algo, usa las herramientas disponibles
+2. EJECUTA, NO EXPLIQUES: No digas "puedes hacer X", simplemente hazlo
+3. VERIFICA: Después de crear/modificar algo, confirma que funcionó
+4. SÉ ESPECÍFICO: Cuando uses herramientas, usa los parámetros correctos
+
+HERRAMIENTAS DISPONIBLES:
+- read_file(path): Lee un archivo
+- write_file(path, content): Escribe/sobrescribe un archivo
+- edit_file(path, old_content, new_content): Edita parte de un archivo
+- create_file(path, content): Crea un nuevo archivo
+- list_files(directory, pattern): Lista archivos (directory=".", pattern="*.py")
+- run_command(command): Ejecuta comando shell
+- run_tests(test_path): Ejecuta pytest
+- git_status(): Estado del repositorio
+- git_diff(): Cambios no commiteados
+- git_commit(message): Crear commit
+- get_datetime(): Obtener fecha y hora actual
+- get_system_info(): Información del sistema
+
+EJEMPLOS DE USO CORRECTO:
+
+Usuario: "Crea un archivo con la fecha de hoy"
+Tú: [Primero llamas get_datetime() para obtener la fecha]
+    [Luego llamas create_file() con el contenido que incluye la fecha]
+    "He creado el archivo con la fecha actual: 2025-10-13"
+
+Usuario: "Lista los archivos Python"
+Tú: [Llamas list_files con directory=".", pattern="*.py"]
+    "Encontré 15 archivos Python: main.py, test.py, ..."
+
+Usuario: "Muestra el status de git"
+Tú: [Llamas git_status()]
+    "Estado del repositorio: branch master, 5 archivos modificados..."
+
+IMPORTANTE:
+- Si necesitas información (fecha, archivos, etc.), PRIMERO llama a la herramienta
+- Luego usa esa información en tu respuesta o en otra herramienta
+- No inventes información, siempre usa las herramientas"""
 
 
 class ToolAgent:
@@ -39,9 +141,16 @@ class ToolAgent:
         self.file_ops = FileOperations(project_path)
         self.shell_ops = ShellOperations(project_path)
         self.git_ops = GitOperations(project_path)
+        self.sys_tools = SystemTools()
         
         # Historial de conversación
         self.history = []
+        
+        # Agregar system prompt
+        self.history.append({
+            "role": "system",
+            "content": SYSTEM_PROMPT
+        })
         
         # Registrar herramientas disponibles
         self.tools = self._register_tools()
@@ -141,17 +250,17 @@ class ToolAgent:
                 "type": "function",
                 "function": {
                     "name": "list_files",
-                    "description": "Lista archivos en un directorio con patrón opcional",
+                    "description": "Lista archivos en un directorio con patrón opcional. Para listar archivos Python usa directory='.' y pattern='*.py'",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "directory": {
                                 "type": "string",
-                                "description": "Directorio a listar (por defecto '.')"
+                                "description": "Directorio a listar, por defecto '.' (directorio actual)"
                             },
                             "pattern": {
                                 "type": "string",
-                                "description": "Patrón de archivos (ej: '*.py', '*.js')"
+                                "description": "Patrón de archivos (ej: '*.py' para Python, '*.js' para JavaScript, '*' para todos)"
                             }
                         },
                         "required": []
@@ -232,6 +341,30 @@ class ToolAgent:
                         "required": ["message"]
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_datetime",
+                    "description": "Obtiene la fecha y hora actual del sistema",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_system_info",
+                    "description": "Obtiene información del sistema operativo y entorno",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
             }
         ]
     
@@ -259,7 +392,9 @@ class ToolAgent:
             "run_tests": lambda args: self.shell_ops.run_tests(args.get("test_path")),
             "git_status": lambda args: self.git_ops.status(),
             "git_diff": lambda args: self.git_ops.diff(),
-            "git_commit": lambda args: self.git_ops.commit(args["message"])
+            "git_commit": lambda args: self.git_ops.commit(args["message"]),
+            "get_datetime": lambda args: self.sys_tools.get_current_datetime(),
+            "get_system_info": lambda args: self.sys_tools.get_system_info()
         }
     
     def _execute_tool(self, function_name: str, arguments: Dict[str, Any]) -> Any:
@@ -370,15 +505,21 @@ class ToolAgent:
                 # Ejecutar herramienta
                 result = self._execute_tool(function_name, arguments)
                 
-                # Convertir resultado a string
-                if isinstance(result, tuple):
+                # Convertir resultado a string legible
+                if isinstance(result, dict):
+                    result_str = json.dumps(result, indent=2, ensure_ascii=False)
+                elif isinstance(result, tuple):
                     result_str = str(result)
                 elif isinstance(result, list):
-                    result_str = "\n".join(str(item) for item in result)
+                    result_str = "\n".join(str(item) for item in result[:20])  # Limitar a 20 items
+                    if len(result) > 20:
+                        result_str += f"\n... y {len(result) - 20} más"
                 else:
                     result_str = str(result)
                 
-                print(f"✓ Resultado: {result_str[:100]}{'...' if len(result_str) > 100 else ''}\n")
+                # Limitar longitud para display
+                display_result = result_str[:200] + "..." if len(result_str) > 200 else result_str
+                print(f"✓ Resultado: {display_result}\n")
                 
                 # Agregar resultado al historial
                 self.history.append({
@@ -396,5 +537,8 @@ class ToolAgent:
     
     def reset_conversation(self):
         """Reinicia el historial de conversación."""
-        self.history = []
+        self.history = [{
+            "role": "system",
+            "content": SYSTEM_PROMPT
+        }]
         print("💭 Conversación reiniciada")

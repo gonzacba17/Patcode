@@ -35,3 +35,13 @@ requests>=2.31.0
 rich>=13.7.0
 pytest>=7.4.0
 pathspec>=0.11.0
+
+# Core dependencies
+requests>=2.31.0,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
+
+# CLI improvements
+rich>=13.7.0,<14.0.0
+
+# Utils
+pyyaml>=6.0.1,<7.0.0

@@ -1,264 +1,215 @@
 """
-Validadores para entradas y configuraciones
+Validadores de entrada para PatCode.
+
+Este módulo contiene funciones y clases para validar inputs del usuario,
+asegurando que cumplan con los requisitos antes de procesarlos.
 """
 
-import os
-import re
+from typing import List
+from config import settings
+from exceptions import InvalidPromptError
 
 
-def validate_file_path(file_path):
-    """
-    Valida que una ruta de archivo sea válida
+class InputValidator:
+    """Validador de inputs del usuario."""
     
-    Args:
-        file_path (str): Ruta del archivo
-    
-    Returns:
-        tuple: (bool, str) - (es_válido, mensaje_error)
-    """
-    if not file_path:
-        return False, "La ruta del archivo no puede estar vacía"
-    
-    if not isinstance(file_path, str):
-        return False, "La ruta debe ser una cadena de texto"
-    
-    # Validar caracteres inválidos
-    invalid_chars = '<>"|?*'
-    if any(char in file_path for char in invalid_chars):
-        return False, f"La ruta contiene caracteres inválidos: {invalid_chars}"
-    
-    # Validar que no sea una ruta absoluta peligrosa
-    if file_path.startswith('/') and not os.path.exists(file_path):
-        return False, "Ruta absoluta no encontrada"
-    
-    return True, ""
-
-
-def validate_directory_path(dir_path):
-    """
-    Valida que una ruta de directorio sea válida
-    
-    Args:
-        dir_path (str): Ruta del directorio
-    
-    Returns:
-        tuple: (bool, str) - (es_válido, mensaje_error)
-    """
-    is_valid, error = validate_file_path(dir_path)
-    
-    if not is_valid:
-        return is_valid, error
-    
-    if os.path.exists(dir_path) and not os.path.isdir(dir_path):
-        return False, "La ruta existe pero no es un directorio"
-    
-    return True, ""
-
-
-def validate_command(command):
-    """
-    Valida comandos de shell para seguridad básica
-    
-    Args:
-        command (str): Comando a validar
-    
-    Returns:
-        tuple: (bool, str) - (es_válido, mensaje_error)
-    """
-    if not command:
-        return False, "El comando no puede estar vacío"
-    
-    if not isinstance(command, str):
-        return False, "El comando debe ser una cadena de texto"
-    
-    # Lista de comandos potencialmente peligrosos
-    dangerous_patterns = [
-        r'rm\s+-rf\s+/',  # rm -rf /
-        r':\(\)\{.*\}',   # Fork bomb
-        r'sudo\s+rm',     # sudo rm
-        r'mkfs\.',        # Formatear disco
-        r'dd\s+if=',      # dd puede ser peligroso
+    # Caracteres considerados peligrosos o problemáticos
+    DANGEROUS_CHARS: List[str] = [
+        '\x00',  # Null byte
+        '\x1a',  # EOF en algunos sistemas
     ]
     
-    for pattern in dangerous_patterns:
-        if re.search(pattern, command):
-            return False, f"Comando potencialmente peligroso detectado"
+    @staticmethod
+    def validate_prompt(prompt: str) -> str:
+        """
+        Valida un prompt del usuario.
+        
+        Realiza las siguientes validaciones:
+        1. Limpia espacios al inicio y final
+        2. Verifica longitud mínima
+        3. Verifica longitud máxima
+        4. Detecta caracteres peligrosos
+        
+        Args:
+            prompt: Texto ingresado por el usuario
+            
+        Returns:
+            Prompt limpio y validado
+            
+        Raises:
+            InvalidPromptError: Si el prompt no cumple los requisitos
+            
+        Examples:
+            >>> InputValidator.validate_prompt("  Hola  ")
+            "Hola"
+            
+            >>> InputValidator.validate_prompt("")
+            InvalidPromptError: El prompt no puede estar vacío
+        """
+        # 1. Limpiar espacios
+        cleaned_prompt = prompt.strip()
+        
+        # 2. Validar longitud mínima
+        if len(cleaned_prompt) < settings.validation.min_prompt_length:
+            raise InvalidPromptError(
+                "El prompt no puede estar vacío"
+            )
+        
+        # 3. Validar longitud máxima
+        if len(cleaned_prompt) > settings.validation.max_prompt_length:
+            raise InvalidPromptError(
+                f"El prompt excede el límite de "
+                f"{settings.validation.max_prompt_length} caracteres. "
+                f"Longitud actual: {len(cleaned_prompt)}"
+            )
+        
+        # 4. Detectar caracteres peligrosos
+        dangerous_found = [
+            char for char in InputValidator.DANGEROUS_CHARS 
+            if char in cleaned_prompt
+        ]
+        
+        if dangerous_found:
+            raise InvalidPromptError(
+                f"El prompt contiene caracteres no permitidos: "
+                f"{[repr(c) for c in dangerous_found]}"
+            )
+        
+        return cleaned_prompt
     
-    return True, ""
+    @staticmethod
+    def is_command(text: str) -> bool:
+        """
+        Verifica si el texto es un comando especial.
+        
+        Args:
+            text: Texto a verificar
+            
+        Returns:
+            True si es un comando, False en caso contrario
+            
+        Examples:
+            >>> InputValidator.is_command("/quit")
+            True
+            
+            >>> InputValidator.is_command("Hola")
+            False
+        """
+        text = text.strip().lower()
+        return text.startswith('/')
+    
+    @staticmethod
+    def parse_command(text: str) -> tuple[str, str]:
+        """
+        Parsea un comando separando el comando de sus argumentos.
+        
+        Args:
+            text: Texto del comando
+            
+        Returns:
+            Tupla (comando, argumentos)
+            
+        Examples:
+            >>> InputValidator.parse_command("/help me")
+            ("/help", "me")
+            
+            >>> InputValidator.parse_command("/quit")
+            ("/quit", "")
+        """
+        text = text.strip()
+        parts = text.split(maxsplit=1)
+        
+        command = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+        
+        return command, args
 
 
-def validate_model_name(model_name):
+class MemoryValidator:
+    """Validador para datos de memoria."""
+    
+    @staticmethod
+    def validate_history_entry(entry: dict) -> bool:
+        """
+        Valida que una entrada del historial tenga el formato correcto.
+        
+        Args:
+            entry: Diccionario con una entrada del historial
+            
+        Returns:
+            True si es válida, False en caso contrario
+            
+        Examples:
+            >>> MemoryValidator.validate_history_entry(
+            ...     {"role": "user", "content": "Hola"}
+            ... )
+            True
+        """
+        if not isinstance(entry, dict):
+            return False
+        
+        # Debe tener las claves necesarias
+        required_keys = {"role", "content"}
+        if not required_keys.issubset(entry.keys()):
+            return False
+        
+        # role debe ser 'user' o 'assistant'
+        if entry["role"] not in ["user", "assistant"]:
+            return False
+        
+        # content debe ser string no vacío
+        if not isinstance(entry["content"], str) or not entry["content"].strip():
+            return False
+        
+        return True
+    
+    @staticmethod
+    def validate_history(history: list) -> bool:
+        """
+        Valida que un historial completo sea válido.
+        
+        Args:
+            history: Lista con el historial completo
+            
+        Returns:
+            True si es válido, False en caso contrario
+        """
+        if not isinstance(history, list):
+            return False
+        
+        # Validar cada entrada
+        return all(
+            MemoryValidator.validate_history_entry(entry) 
+            for entry in history
+        )
+
+
+# Funciones de utilidad para validación rápida
+
+def validate_and_clean_prompt(prompt: str) -> str:
     """
-    Valida el nombre de un modelo de Ollama
+    Función de conveniencia para validar y limpiar un prompt.
     
     Args:
-        model_name (str): Nombre del modelo
-    
+        prompt: Prompt a validar
+        
     Returns:
-        tuple: (bool, str) - (es_válido, mensaje_error)
+        Prompt validado y limpio
+        
+    Raises:
+        InvalidPromptError: Si el prompt es inválido
     """
-    if not model_name:
-        return False, "El nombre del modelo no puede estar vacío"
-    
-    if not isinstance(model_name, str):
-        return False, "El nombre del modelo debe ser una cadena de texto"
-    
-    # Validar formato básico de modelo (nombre:tag)
-    pattern = r'^[a-z0-9._-]+(?::[a-z0-9._-]+)?$'
-    if not re.match(pattern, model_name):
-        return False, "Formato de modelo inválido (ejemplo: llama3.2:latest)"
-    
-    return True, ""
+    return InputValidator.validate_prompt(prompt)
 
 
-def validate_url(url):
+def is_special_command(text: str) -> bool:
     """
-    Valida una URL
+    Función de conveniencia para verificar si es un comando especial.
     
     Args:
-        url (str): URL a validar
-    
+        text: Texto a verificar
+        
     Returns:
-        tuple: (bool, str) - (es_válido, mensaje_error)
+        True si es comando, False en caso contrario
     """
-    if not url:
-        return False, "La URL no puede estar vacía"
-    
-    if not isinstance(url, str):
-        return False, "La URL debe ser una cadena de texto"
-    
-    # Patrón básico de URL
-    pattern = r'^https?://[^\s/$.?#].[^\s]*$'
-    if not re.match(pattern, url):
-        return False, "Formato de URL inválido"
-    
-    return True, ""
-
-
-def validate_port(port):
-    """
-    Valida un número de puerto
-    
-    Args:
-        port (int): Número de puerto
-    
-    Returns:
-        tuple: (bool, str) - (es_válido, mensaje_error)
-    """
-    try:
-        port = int(port)
-    except (ValueError, TypeError):
-        return False, "El puerto debe ser un número entero"
-    
-    if port < 1 or port > 65535:
-        return False, "El puerto debe estar entre 1 y 65535"
-    
-    # Puertos reservados comunes
-    reserved_ports = [22, 25, 80, 443]
-    if port in reserved_ports:
-        return True, f"Advertencia: puerto {port} es comúnmente reservado"
-    
-    return True, ""
-
-
-def validate_file_extension(file_path, allowed_extensions):
-    """
-    Valida que un archivo tenga una extensión permitida
-    
-    Args:
-        file_path (str): Ruta del archivo
-        allowed_extensions (list): Lista de extensiones permitidas
-    
-    Returns:
-        tuple: (bool, str) - (es_válido, mensaje_error)
-    """
-    if not file_path:
-        return False, "La ruta del archivo no puede estar vacía"
-    
-    _, ext = os.path.splitext(file_path)
-    ext = ext.lower()
-    
-    if not ext:
-        return False, "El archivo no tiene extensión"
-    
-    allowed_extensions = [e.lower() if e.startswith('.') else f'.{e.lower()}' 
-                         for e in allowed_extensions]
-    
-    if ext not in allowed_extensions:
-        return False, f"Extensión no permitida. Permitidas: {', '.join(allowed_extensions)}"
-    
-    return True, ""
-
-
-def validate_json_string(json_string):
-    """
-    Valida que una cadena sea JSON válido
-    
-    Args:
-        json_string (str): Cadena JSON
-    
-    Returns:
-        tuple: (bool, str) - (es_válido, mensaje_error)
-    """
-    import json
-    
-    if not json_string:
-        return False, "La cadena JSON no puede estar vacía"
-    
-    try:
-        json.loads(json_string)
-        return True, ""
-    except json.JSONDecodeError as e:
-        return False, f"JSON inválido: {str(e)}"
-
-
-def validate_config(config_dict, required_keys):
-    """
-    Valida que un diccionario de configuración tenga las claves requeridas
-    
-    Args:
-        config_dict (dict): Diccionario de configuración
-        required_keys (list): Lista de claves requeridas
-    
-    Returns:
-        tuple: (bool, str) - (es_válido, mensaje_error)
-    """
-    if not isinstance(config_dict, dict):
-        return False, "La configuración debe ser un diccionario"
-    
-    missing_keys = [key for key in required_keys if key not in config_dict]
-    
-    if missing_keys:
-        return False, f"Faltan claves requeridas: {', '.join(missing_keys)}"
-    
-    return True, ""
-
-
-def sanitize_input(user_input, max_length=1000):
-    """
-    Sanitiza entrada de usuario
-    
-    Args:
-        user_input (str): Entrada del usuario
-        max_length (int): Longitud máxima permitida
-    
-    Returns:
-        str: Entrada sanitizada
-    """
-    if not user_input:
-        return ""
-    
-    # Convertir a string si no lo es
-    user_input = str(user_input)
-    
-    # Truncar si es muy largo
-    if len(user_input) > max_length:
-        user_input = user_input[:max_length]
-    
-    # Remover caracteres de control peligrosos
-    user_input = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', user_input)
-    
-    # Strip espacios
-    user_input = user_input.strip()
-    
-    return user_input
+    return InputValidator.is_command(text)

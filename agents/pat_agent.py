@@ -24,6 +24,7 @@ from exceptions import (
     PatCodeError
 )
 from utils.validators import InputValidator, MemoryValidator
+from utils.file_manager import FileManager
 
 # Configurar logger
 logger = logging.getLogger(__name__)
@@ -34,8 +35,8 @@ class PatAgent:
     Agente de programación asistido por LLM.
     
     Este agente maneja conversaciones con el usuario, mantiene
-    un historial persistente y se comunica con Ollama para
-    generar respuestas inteligentes.
+    un historial persistente, gestiona archivos del proyecto
+    y se comunica con Ollama para generar respuestas inteligentes.
     
     Attributes:
         history: Lista de mensajes de la conversación
@@ -43,6 +44,7 @@ class PatAgent:
         ollama_url: URL completa del endpoint de Ollama
         model: Nombre del modelo LLM a usar
         timeout: Timeout para requests a Ollama en segundos
+        file_manager: Gestor de archivos del proyecto
     """
     
     def __init__(self):
@@ -59,6 +61,9 @@ class PatAgent:
         self.model: str = settings.ollama.model
         self.timeout: int = settings.ollama.timeout
         
+        # Inicializar FileManager
+        self.file_manager = FileManager()
+        
         # Crear directorio de memoria si no existe
         try:
             self.memory_path.parent.mkdir(parents=True, exist_ok=True)
@@ -70,11 +75,29 @@ class PatAgent:
         # Cargar historial
         self._load_history()
         
+        # Auto-cargar README si existe
+        self._auto_load_readme()
+        
         logger.info(
             f"PatAgent inicializado | "
             f"Modelo: {self.model} | "
-            f"Mensajes cargados: {len(self.history)}"
+            f"Mensajes cargados: {len(self.history)} | "
+            f"Archivos en contexto: {len(self.file_manager.loaded_files)}"
         )
+    
+    def _auto_load_readme(self) -> None:
+        """Intenta cargar automáticamente el README del proyecto."""
+        readme_names = ['README.md', 'README.txt', 'README', 'readme.md']
+        
+        for readme_name in readme_names:
+            readme_path = Path.cwd() / readme_name
+            if readme_path.exists():
+                try:
+                    self.file_manager.load_file(str(readme_path))
+                    logger.info(f"README cargado automáticamente: {readme_name}")
+                    break
+                except Exception as e:
+                    logger.debug(f"No se pudo cargar {readme_name}: {e}")
     
     def _load_history(self) -> None:
         """
@@ -144,7 +167,7 @@ class PatAgent:
     
     def _build_context(self) -> str:
         """
-        Construye el contexto para el LLM basado en el historial reciente.
+        Construye el contexto para el LLM basado en el historial reciente y archivos cargados.
         
         Usa solo los últimos N mensajes según CONTEXT_WINDOW_SIZE
         para no sobrecargar el contexto del modelo.
@@ -162,8 +185,15 @@ class PatAgent:
             "- Explicaciones claras de conceptos\n"
             "- Ejemplos de código prácticos\n"
             "- Debugging y resolución de problemas\n"
-            "- Mejores prácticas y patrones\n\n"
+            "- Mejores prácticas y patrones\n"
+            "- Análisis y revisión de código\n\n"
         )
+        
+        # Agregar información de archivos cargados si existen
+        if self.file_manager.loaded_files:
+            context += self.file_manager.get_context_summary()
+            context += "\nIMPORTANTE: Tienes acceso al contenido de estos archivos. "
+            context += "Úsalos para dar respuestas más precisas sobre el proyecto.\n\n"
         
         # Agregar conversación reciente si existe
         if recent_history:
@@ -263,7 +293,7 @@ class PatAgent:
         Este método:
         1. Valida el prompt
         2. Lo agrega al historial
-        3. Construye el contexto
+        3. Construye el contexto (incluyendo archivos)
         4. Llama a Ollama
         5. Guarda la respuesta
         6. Persiste el historial
@@ -293,9 +323,15 @@ class PatAgent:
         logger.debug(f"Pregunta agregada al historial: '{validated_prompt[:50]}...'")
         
         try:
-            # 3. Construir contexto
+            # 3. Construir contexto (ahora incluye archivos)
             context = self._build_context()
-            full_prompt = f"{context}\nUsuario: {validated_prompt}\nPat:"
+            
+            # Si hay archivos cargados, agregar su contenido
+            files_content = ""
+            if self.file_manager.loaded_files:
+                files_content = self.file_manager.get_files_content()
+            
+            full_prompt = f"{context}\n{files_content}\nUsuario: {validated_prompt}\nPat:"
             
             # 4. Llamar a Ollama
             answer = self._call_ollama(full_prompt)
@@ -341,12 +377,17 @@ class PatAgent:
         Returns:
             Diccionario con estadísticas
         """
+        file_stats = self.file_manager.get_stats()
+        
         return {
             "total_messages": len(self.history),
             "user_messages": sum(1 for msg in self.history if msg["role"] == "user"),
             "assistant_messages": sum(1 for msg in self.history if msg["role"] == "assistant"),
             "model": self.model,
             "memory_path": str(self.memory_path),
+            "loaded_files": file_stats['total_files'],
+            "files_size_kb": file_stats['total_size_kb'],
+            "files_usage_percent": file_stats['usage_percent']
         }
     
     def export_history(self, output_path: Path) -> None:

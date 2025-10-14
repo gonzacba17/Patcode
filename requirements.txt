@@ -1,47 +1,46 @@
-# Core dependencies
-requests>=2.31.0
+# ================================
+# PATCODE - CORE DEPENDENCIES
+# ================================
 
-# Terminal UI y colores
-rich>=13.7.0              # Terminal formatting, progress bars, syntax highlighting
-prompt-toolkit>=3.0.43    # Mejor input con autocompletado y shortcuts
-
-# Code analysis
-ast-comments>=1.2.2       # Better AST parsing with comments
-autopep8>=2.0.4          # Code formatting
-pylint>=3.0.3            # Static analysis
-
-# Git integration (optional pero útil)
-gitpython>=3.1.40        # Git operations desde Python
-
-# Testing (para run_tests tool)
-pytest>=7.4.3
-pytest-cov>=4.1.0
-
-# File handling
-pathspec>=0.11.2         # .gitignore style pattern matching
-watchdog>=3.0.0          # File system monitoring (para futuras features)
-
-# Performance
-ujson>=5.9.0             # JSON más rápido
-cachetools>=5.3.2        # Caching para contexto
-
-# Optional: Web UI (comentado por defecto)
-# streamlit>=1.29.0      # Para interfaz web
-# fastapi>=0.108.0       # API REST
-# uvicorn>=0.25.0        # ASGI server
-# uvicorn>=0.25.0        # ASGI server
-# Agregar al archivo requirements.txt:
-requests>=2.31.0
-rich>=13.7.0
-pytest>=7.4.0
-pathspec>=0.11.0
-
-# Core dependencies
+# HTTP requests para comunicación con Ollama
 requests>=2.31.0,<3.0.0
+
+# Variables de entorno (.env)
 python-dotenv>=1.0.0,<2.0.0
 
-# CLI improvements
+# Terminal UI mejorado (colores, tablas, markdown)
 rich>=13.7.0,<14.0.0
 
-# Utils
-pyyaml>=6.0.1,<7.0.0
+
+# ================================
+# OPTIONAL DEPENDENCIES
+# (Descomentar si necesitas estas features)
+# ================================
+
+# Code analysis y formateo
+ sast-comments>=1.2.2       # AST parsing con comentarios
+ autopep8>=2.0.4           # Auto formateo de código Python
+ pylint>=3.0.3             # Análisis estático de código
+
+# Git integration
+ gitpython>=3.1.40         # Operaciones Git desde Python
+
+# Testing
+ pytest>=7.4.3             # Framework de testing
+ pytest-cov>=4.1.0         # Coverage reports
+
+# File handling avanzado
+ pathspec>=0.11.2          # Pattern matching (.gitignore style)
+ watchdog>=3.0.0           # File system monitoring en tiempo real
+
+# Performance optimization
+ ujson>=5.9.0              # JSON parsing más rápido
+ cachetools>=5.3.2         # Sistema de caché para contexto
+
+# Web UI (para futuras versiones)
+ streamlit>=1.29.0         # Interfaz web interactiva
+ fastapi>=0.108.0          # API REST backend
+ uvicorn>=0.25.0           # ASGI server para FastAPI
+
+# YAML support (si usas archivos .yaml)
+ pyyaml>=6.0.1,<7.0.0

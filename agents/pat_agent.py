@@ -191,9 +191,11 @@ class PatAgent:
         
         # Agregar información de archivos cargados si existen
         if self.file_manager.loaded_files:
-            context += self.file_manager.get_context_summary()
-            context += "\nIMPORTANTE: Tienes acceso al contenido de estos archivos. "
-            context += "Úsalos para dar respuestas más precisas sobre el proyecto.\n\n"
+            context += "ARCHIVOS DEL PROYECTO DISPONIBLES:\n"
+            for file_path, loaded_file in self.file_manager.loaded_files.items():
+                lines = len(loaded_file.content.splitlines())
+                context += f"- {loaded_file.path.name} ({lines} líneas)\n"
+            context += "\nPuedes analizar estos archivos cuando el usuario lo pida.\n\n"
         
         # Agregar conversación reciente si existe
         if recent_history:
@@ -326,10 +328,25 @@ class PatAgent:
             # 3. Construir contexto (ahora incluye archivos)
             context = self._build_context()
             
-            # Si hay archivos cargados, agregar su contenido
+            # Si hay archivos cargados Y el usuario pregunta sobre código específico,
+            # agregar el contenido del archivo relevante
             files_content = ""
             if self.file_manager.loaded_files:
-                files_content = self.file_manager.get_files_content()
+                # Detectar si el usuario menciona un archivo específico
+                prompt_lower = validated_prompt.lower()
+                for file_path, loaded_file in self.file_manager.loaded_files.items():
+                    file_name_lower = loaded_file.path.name.lower()
+                    # Si menciona el archivo o pide analizar/revisar código
+                    if (file_name_lower in prompt_lower or 
+                        any(word in prompt_lower for word in ['analiza', 'analizar', 'revisa', 'revisar', 'código', 'codigo', 'archivo', 'main', 'config'])):
+                        # Solo agregar archivos mencionados o relevantes
+                        if file_name_lower in prompt_lower or 'main.py' in file_name_lower:
+                            files_content += f"\n=== Contenido de {loaded_file.path.name} ===\n"
+                            files_content += loaded_file.content[:5000]  # Limitar a 5000 caracteres
+                            if len(loaded_file.content) > 5000:
+                                files_content += "\n... (archivo truncado por tamaño)"
+                            files_content += "\n\n"
+                            break  # Solo un archivo por consulta
             
             full_prompt = f"{context}\n{files_content}\nUsuario: {validated_prompt}\nPat:"
             

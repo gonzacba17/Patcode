@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock
 from typing import Generator
 
-from config import Settings, OllamaConfig, MemoryConfig, ValidationConfig, LoggingConfig
+from config.settings import Settings, OllamaSettings, MemorySettings, ValidationSettings, LoggingSettings
 
 
 @pytest.fixture
@@ -44,9 +44,9 @@ def temp_log_file(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def mock_ollama_config() -> OllamaConfig:
+def mock_ollama_config() -> OllamaSettings:
     """Configuración de Ollama para tests."""
-    return OllamaConfig(
+    return OllamaSettings(
         base_url="http://localhost:11434",
         model="llama3.2:latest",
         timeout=30
@@ -54,9 +54,9 @@ def mock_ollama_config() -> OllamaConfig:
 
 
 @pytest.fixture
-def mock_memory_config(temp_memory_file: Path) -> MemoryConfig:
+def mock_memory_config(temp_memory_file: Path) -> MemorySettings:
     """Configuración de memoria para tests."""
-    return MemoryConfig(
+    return MemorySettings(
         path=temp_memory_file,
         context_size=5,
         max_size=100
@@ -64,29 +64,30 @@ def mock_memory_config(temp_memory_file: Path) -> MemoryConfig:
 
 
 @pytest.fixture
-def mock_validation_config() -> ValidationConfig:
+def mock_validation_config() -> ValidationSettings:
     """Configuración de validación para tests."""
-    return ValidationConfig(
+    return ValidationSettings(
         max_prompt_length=10000,
         min_prompt_length=1
     )
 
 
 @pytest.fixture
-def mock_logging_config(temp_log_file: Path) -> LoggingConfig:
+def mock_logging_config(temp_log_file: Path) -> LoggingSettings:
     """Configuración de logging para tests."""
-    return LoggingConfig(
+    return LoggingSettings(
         level="DEBUG",
-        file=temp_log_file
+        filename=str(temp_log_file),
+        file=True
     )
 
 
 @pytest.fixture
 def mock_settings(
-    mock_ollama_config: OllamaConfig,
-    mock_memory_config: MemoryConfig,
-    mock_validation_config: ValidationConfig,
-    mock_logging_config: LoggingConfig
+    mock_ollama_config: OllamaSettings,
+    mock_memory_config: MemorySettings,
+    mock_validation_config: ValidationSettings,
+    mock_logging_config: LoggingSettings
 ) -> Settings:
     """Settings completo para tests."""
     return Settings(
@@ -148,9 +149,8 @@ def mock_settings_in_modules(monkeypatch, mock_settings: Settings):
     Esto evita que los tests usen la configuración real del sistema.
     """
     monkeypatch.setattr('config.settings', mock_settings)
-    # También en los módulos que importan settings
     monkeypatch.setattr('agents.pat_agent.settings', mock_settings)
-    monkeypatch.setattr('validators.settings', mock_settings)
+    monkeypatch.setattr('utils.validators.settings', mock_settings)
 
 
 @pytest.fixture

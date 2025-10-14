@@ -48,6 +48,10 @@ class MemorySettings:
     context_size: int = int(os.getenv("CONTEXT_WINDOW_SIZE", "10"))
     directory: Path = MEMORY_DIR
     context_cache_path: Path = CONTEXT_CACHE_FILE
+    max_active_messages: int = int(os.getenv("MAX_ACTIVE_MESSAGES", "10"))
+    max_file_size_bytes: int = int(os.getenv("MAX_MEMORY_FILE_SIZE", str(5 * 1024 * 1024)))
+    enable_summarization: bool = os.getenv("ENABLE_MEMORY_SUMMARIZATION", "true").lower() == "true"
+    archive_directory: Path = MEMORY_DIR / "archives"
 
 
 @dataclass

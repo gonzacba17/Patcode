@@ -25,6 +25,7 @@ from exceptions import (
 )
 from utils.validators import InputValidator, MemoryValidator
 from utils.file_manager import FileManager
+from agents.memory.memory_manager import MemoryManager, MemoryConfig
 
 # Configurar logger
 logger = logging.getLogger(__name__)
@@ -55,7 +56,6 @@ class PatAgent:
             MemoryReadError: Si hay problemas al cargar el historial
             ConfigurationError: Si la configuración es inválida
         """
-        self.history: List[Dict[str, str]] = []
         self.memory_path: Path = settings.memory.path
         self.ollama_url: str = f"{settings.ollama.base_url}/api/generate"
         self.model: str = settings.ollama.model
@@ -63,6 +63,16 @@ class PatAgent:
         
         # Inicializar FileManager
         self.file_manager = FileManager()
+        
+        # Configurar MemoryManager
+        memory_config = MemoryConfig(
+            max_active_messages=settings.memory.max_active_messages,
+            max_file_size_bytes=settings.memory.max_file_size_bytes,
+            archive_dir=settings.memory.archive_directory if settings.memory.enable_summarization else None,
+            ollama_url=self.ollama_url,
+            summarize_model=self.model
+        )
+        self.memory_manager = MemoryManager(memory_config)
         
         # Crear directorio de memoria si no existe
         try:
@@ -72,8 +82,11 @@ class PatAgent:
             logger.error(f"Error al crear directorio de memoria: {e}")
             raise PatCodeError(f"No se pudo crear directorio de memoria: {e}")
         
-        # Cargar historial
-        self._load_history()
+        # Cargar historial usando MemoryManager
+        self.memory_manager.load_from_file(self.memory_path)
+        
+        # Mantener referencia a history para compatibilidad
+        self.history = self.memory_manager.active_memory
         
         # Auto-cargar README si existe
         self._auto_load_readme()
@@ -81,7 +94,7 @@ class PatAgent:
         logger.info(
             f"PatAgent inicializado | "
             f"Modelo: {self.model} | "
-            f"Mensajes cargados: {len(self.history)} | "
+            f"Mensajes activos: {len(self.memory_manager.active_memory)} | "
             f"Archivos en contexto: {len(self.file_manager.loaded_files)}"
         )
     
@@ -100,67 +113,17 @@ class PatAgent:
                     logger.debug(f"No se pudo cargar {readme_name}: {e}")
     
     def _load_history(self) -> None:
-        """
-        Carga el historial desde el archivo de memoria.
-        
-        Si el archivo no existe, inicializa con historial vacío.
-        Si el archivo está corrupto, lanza error.
-        
-        Raises:
-            MemoryCorruptedError: Si el archivo JSON está corrupto
-            MemoryReadError: Si hay otros errores al leer
-        """
-        try:
-            if self.memory_path.exists():
-                with open(self.memory_path, 'r', encoding='utf-8') as f:
-                    loaded_history = json.load(f)
-                
-                # Validar que el historial tenga formato correcto
-                if not MemoryValidator.validate_history(loaded_history):
-                    logger.warning("Historial con formato inválido, limpiando...")
-                    self.history = []
-                else:
-                    self.history = loaded_history
-                    logger.info(f"Historial cargado: {len(self.history)} mensajes")
-            else:
-                self.history = []
-                logger.info("Archivo de memoria no existe, iniciando con historial vacío")
-                
-        except json.JSONDecodeError as e:
-            logger.error(f"Error al decodificar JSON: {e}")
-            raise MemoryCorruptedError(
-                f"El archivo de memoria está corrupto. "
-                f"Renómbralo o elimínalo: {self.memory_path}"
-            )
-        except Exception as e:
-            logger.error(f"Error inesperado al cargar historial: {e}")
-            raise MemoryReadError(f"No se pudo cargar la memoria: {e}")
+        pass
     
     def _save_history(self) -> None:
         """
-        Guarda el historial en el archivo de memoria.
-        
-        Si el historial excede MAX_MEMORY_SIZE, lo trunca automáticamente.
+        Guarda el historial usando MemoryManager.
         
         Raises:
             MemoryWriteError: Si hay errores al escribir
         """
         try:
-            # Truncar si excede el tamaño máximo
-            if len(self.history) > settings.memory.max_size:
-                old_size = len(self.history)
-                self.history = self.history[-settings.memory.max_size:]
-                logger.warning(
-                    f"Historial truncado de {old_size} a "
-                    f"{settings.memory.max_size} mensajes"
-                )
-            
-            # Guardar
-            with open(self.memory_path, 'w', encoding='utf-8') as f:
-                json.dump(self.history, f, indent=2, ensure_ascii=False)
-            
-            logger.debug(f"Historial guardado: {len(self.history)} mensajes")
-            
+            self.memory_manager.save_to_file(self.memory_path)
         except Exception as e:
             logger.error(f"Error al guardar historial: {e}")
             raise MemoryWriteError(f"No se pudo guardar la memoria: {e}")
@@ -175,8 +138,7 @@ class PatAgent:
         Returns:
             String con el contexto formateado para el LLM
         """
-        context_size = settings.memory.context_size
-        recent_history = self.history[-context_size:] if self.history else []
+        full_context = self.memory_manager.get_full_context()
         
         # System prompt base
         context = (
@@ -197,12 +159,15 @@ class PatAgent:
                 context += f"- {loaded_file.path.name} ({lines} líneas)\n"
             context += "\nPuedes analizar estos archivos cuando el usuario lo pida.\n\n"
         
-        # Agregar conversación reciente si existe
-        if recent_history:
+        # Agregar contexto completo (pasivo + activo)
+        if full_context:
             context += "Conversación reciente:\n"
-            for msg in recent_history:
+            for msg in full_context:
                 role_display = "Usuario" if msg["role"] == "user" else "Pat"
-                context += f"{role_display}: {msg['content']}\n"
+                if msg["role"] == "system":
+                    context += f"{msg['content']}\n"
+                else:
+                    context += f"{role_display}: {msg['content']}\n"
             context += "\n"
         
         return context
@@ -319,9 +284,8 @@ class PatAgent:
             logger.warning(f"Prompt inválido rechazado: {e}")
             raise
         
-        # 2. Agregar pregunta al historial
-        user_message = {"role": "user", "content": validated_prompt}
-        self.history.append(user_message)
+        # 2. Agregar pregunta al historial usando MemoryManager
+        self.memory_manager.add_message("user", validated_prompt)
         logger.debug(f"Pregunta agregada al historial: '{validated_prompt[:50]}...'")
         
         try:
@@ -353,9 +317,8 @@ class PatAgent:
             # 4. Llamar a Ollama
             answer = self._call_ollama(full_prompt)
             
-            # 5. Agregar respuesta al historial
-            assistant_message = {"role": "assistant", "content": answer}
-            self.history.append(assistant_message)
+            # 5. Agregar respuesta al historial usando MemoryManager
+            self.memory_manager.add_message("assistant", answer)
             logger.debug(f"Respuesta agregada al historial: '{answer[:50]}...'")
             
             # 6. Guardar memoria
@@ -365,13 +328,15 @@ class PatAgent:
             
         except (OllamaConnectionError, OllamaTimeoutError, OllamaModelNotFoundError) as e:
             # Si falla, revertir el último mensaje del usuario
-            self.history.pop()
+            if self.memory_manager.active_memory:
+                self.memory_manager.active_memory.pop()
             logger.error(f"Error al procesar pregunta, historial revertido: {e}")
             raise
             
         except Exception as e:
             # Error inesperado
-            self.history.pop()
+            if self.memory_manager.active_memory:
+                self.memory_manager.active_memory.pop()
             logger.exception("Error inesperado al procesar pregunta")
             raise PatCodeError(f"Error inesperado: {e}")
     
@@ -383,7 +348,7 @@ class PatAgent:
             MemoryWriteError: Si no se puede guardar el historial vacío
         """
         logger.info("Limpiando historial...")
-        self.history = []
+        self.memory_manager.clear_all()
         self._save_history()
         logger.info("Historial limpiado exitosamente")
     
@@ -395,11 +360,14 @@ class PatAgent:
             Diccionario con estadísticas
         """
         file_stats = self.file_manager.get_stats()
+        memory_stats = self.memory_manager.get_stats()
         
         return {
-            "total_messages": len(self.history),
-            "user_messages": sum(1 for msg in self.history if msg["role"] == "user"),
-            "assistant_messages": sum(1 for msg in self.history if msg["role"] == "assistant"),
+            "total_messages": memory_stats['total_context'],
+            "active_messages": memory_stats['active_messages'],
+            "passive_summaries": memory_stats['passive_summaries'],
+            "user_messages": sum(1 for msg in self.memory_manager.active_memory if msg["role"] == "user"),
+            "assistant_messages": sum(1 for msg in self.memory_manager.active_memory if msg["role"] == "assistant"),
             "model": self.model,
             "memory_path": str(self.memory_path),
             "loaded_files": file_stats['total_files'],
@@ -420,7 +388,7 @@ class PatAgent:
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(self.history, f, indent=2, ensure_ascii=False)
+                json.dump(self.memory_manager.get_full_context(), f, indent=2, ensure_ascii=False)
             logger.info(f"Historial exportado a: {output_path}")
         except Exception as e:
             logger.error(f"Error al exportar historial: {e}")

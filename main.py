@@ -53,7 +53,7 @@ def main():
     
     try:
         agent = ToolAgent(
-            model="qwen2.5-coder:7b",  # Cambiar por el modelo que tengas
+            model="qwen2.5-coder:14b",  # Cambiar por el modelo que tengas
             project_path="."
         )
         console.print("[green]✓ PatCode listo para usar[/green]\n")

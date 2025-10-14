@@ -6,6 +6,50 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.
 
 ---
 
+## [0.3.1] - 2025-10-14
+
+### ✨ Añadido
+
+**Interfaz Rich Avanzada:**
+- ✅ `RichTerminalUI` - Interfaz visual moderna con Rich
+- ✅ Syntax highlighting automático para código Python, JS, TS, etc.
+- ✅ Paneles visuales para errores, warnings, info, éxito
+- ✅ Progress bars para operaciones largas (analyze, refactor, test)
+- ✅ Autocompletado mejorado con historial persistente (.patcode_history)
+- ✅ Tablas formateadas para estadísticas y reportes
+- ✅ Confirmaciones visuales para acciones destructivas
+- ✅ Markdown rendering para respuestas del LLM
+- ✅ Árbol de archivos visual con iconos
+- ✅ Info del modelo con RAM y velocidad
+
+**CLI Mejorada:**
+- 🔄 Todos los comandos ahora usan RichTerminalUI
+- 🔄 Mensajes de bienvenida visuales con Panel
+- 🔄 Reportes de análisis con barras de progreso y emojis
+- 🔄 Comandos /load, /files, /stats con UI mejorada
+- 🔄 Progress spinner durante pensamiento del LLM
+
+**Tests:**
+- ✅ `tests/test_rich_ui.py` - 8 tests para RichTerminalUI
+- ✅ Cobertura de display_code, display_stats, file_tree, etc.
+
+### 🎨 Mejoras Visuales
+
+- 🎨 Colores consistentes: cyan (info), green (success), red (error), yellow (warning)
+- 🎨 Emojis contextuales: ✅ ❌ ⚠️ 💡 📊 🤖 📄 📁
+- 🎨 Barras de progreso ASCII: █████░░░░░
+- 🎨 Paneles con bordes para mejor legibilidad
+
+### 📊 UX
+
+- ⚡ Autocompletado instantáneo con Tab
+- ⚡ Historial de comandos con ↑↓
+- ⚡ Confirmaciones interactivas para evitar errores
+- ⚡ Spinner animado durante procesamiento LLM
+- ⚡ Limpieza de pantalla con /clear
+
+---
+
 ## [0.3.0] - 2025-10-14
 
 ### ✨ Añadido

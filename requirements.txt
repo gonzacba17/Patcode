@@ -32,8 +32,8 @@ click>=8.1.7,<9.0.0
  gitpython>=3.1.40         # Operaciones Git desde Python
 
 # Testing
- pytest>=7.4.3             # Framework de testing
- pytest-cov>=4.1.0         # Coverage reports
+pytest>=7.4.3             # Framework de testing
+pytest-cov>=4.1.0         # Coverage reports
 
 # File handling avanzado
  pathspec>=0.11.2          # Pattern matching (.gitignore style)

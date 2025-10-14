@@ -1,178 +1,369 @@
 """
-PatAgent v3.0 - Versión simplificada funcional
-"""
-import requests
-import json
-import os
-from typing import List, Dict, Optional
-from datetime import datetime
+PatAgent - Agente de programación asistido por LLM.
 
-from agents.file_manager import FileManager
+Este módulo implementa el agente principal que maneja la lógica
+de conversación, persistencia y comunicación con Ollama.
+"""
+
+import json
+import requests
+from pathlib import Path
+from typing import List, Dict, Optional
+import logging
+
+from config import settings
+from exceptions import (
+    OllamaConnectionError,
+    OllamaTimeoutError,
+    OllamaModelNotFoundError,
+    OllamaResponseError,
+    MemoryReadError,
+    MemoryWriteError,
+    MemoryCorruptedError,
+    InvalidPromptError,
+    PatCodeError
+)
+from utils.validators import InputValidator, MemoryValidator
+
+# Configurar logger
+logger = logging.getLogger(__name__)
+
 
 class PatAgent:
-    """Agente de IA con capacidades de archivos"""
+    """
+    Agente de programación asistido por LLM.
     
-    def __init__(
-        self, 
-        model: str = "llama3.2:latest", 
-        memory_path: str = "memory/memory.json",
-        max_history: int = 100,
-        system_prompt: Optional[str] = None,
-        enable_file_operations: bool = True,
-        working_dir: str = ".",
-        sandbox_mode: bool = True
-    ):
-        self.model = model
-        self.memory_path = memory_path
-        self.max_history = max_history
-        self.base_url = "http://localhost:11434"
-        self.enable_file_operations = enable_file_operations
-        self.enable_tools = True
-        self.enable_planning = True
+    Este agente maneja conversaciones con el usuario, mantiene
+    un historial persistente y se comunica con Ollama para
+    generar respuestas inteligentes.
+    
+    Attributes:
+        history: Lista de mensajes de la conversación
+        memory_path: Ruta al archivo de memoria persistente
+        ollama_url: URL completa del endpoint de Ollama
+        model: Nombre del modelo LLM a usar
+        timeout: Timeout para requests a Ollama en segundos
+    """
+    
+    def __init__(self):
+        """
+        Inicializa el agente PatCode.
         
-        # File operations
-        self.file_manager = None
-        if enable_file_operations:
-            self.file_manager = FileManager(working_dir=working_dir, sandbox_mode=sandbox_mode)
+        Raises:
+            MemoryReadError: Si hay problemas al cargar el historial
+            ConfigurationError: Si la configuración es inválida
+        """
+        self.history: List[Dict[str, str]] = []
+        self.memory_path: Path = settings.memory.path
+        self.ollama_url: str = f"{settings.ollama.base_url}/api/generate"
+        self.model: str = settings.ollama.model
+        self.timeout: int = settings.ollama.timeout
         
-        # System prompt
-        self.system_prompt = system_prompt or "Sos PatCode v3.0, un asistente de programación experto."
-        
-        # Crear directorio de memoria
-        os.makedirs(os.path.dirname(memory_path) or ".", exist_ok=True)
+        # Crear directorio de memoria si no existe
+        try:
+            self.memory_path.parent.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Directorio de memoria asegurado: {self.memory_path.parent}")
+        except Exception as e:
+            logger.error(f"Error al crear directorio de memoria: {e}")
+            raise PatCodeError(f"No se pudo crear directorio de memoria: {e}")
         
         # Cargar historial
-        self.history = self.load_memory()
+        self._load_history()
         
-        # Verificar conexión
-        if not self._check_ollama_connection():
-            raise ConnectionError("❌ No se puede conectar con Ollama.\nAsegurate de que esté corriendo: 'ollama serve'")
+        logger.info(
+            f"PatAgent inicializado | "
+            f"Modelo: {self.model} | "
+            f"Mensajes cargados: {len(self.history)}"
+        )
     
-    def _check_ollama_connection(self) -> bool:
+    def _load_history(self) -> None:
+        """
+        Carga el historial desde el archivo de memoria.
+        
+        Si el archivo no existe, inicializa con historial vacío.
+        Si el archivo está corrupto, lanza error.
+        
+        Raises:
+            MemoryCorruptedError: Si el archivo JSON está corrupto
+            MemoryReadError: Si hay otros errores al leer
+        """
         try:
-            response = requests.get(f"{self.base_url}/api/tags", timeout=3)
-            return response.status_code == 200
-        except:
-            return False
+            if self.memory_path.exists():
+                with open(self.memory_path, 'r', encoding='utf-8') as f:
+                    loaded_history = json.load(f)
+                
+                # Validar que el historial tenga formato correcto
+                if not MemoryValidator.validate_history(loaded_history):
+                    logger.warning("Historial con formato inválido, limpiando...")
+                    self.history = []
+                else:
+                    self.history = loaded_history
+                    logger.info(f"Historial cargado: {len(self.history)} mensajes")
+            else:
+                self.history = []
+                logger.info("Archivo de memoria no existe, iniciando con historial vacío")
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Error al decodificar JSON: {e}")
+            raise MemoryCorruptedError(
+                f"El archivo de memoria está corrupto. "
+                f"Renómbralo o elimínalo: {self.memory_path}"
+            )
+        except Exception as e:
+            logger.error(f"Error inesperado al cargar historial: {e}")
+            raise MemoryReadError(f"No se pudo cargar la memoria: {e}")
     
-    def load_memory(self) -> List[Dict[str, str]]:
+    def _save_history(self) -> None:
+        """
+        Guarda el historial en el archivo de memoria.
+        
+        Si el historial excede MAX_MEMORY_SIZE, lo trunca automáticamente.
+        
+        Raises:
+            MemoryWriteError: Si hay errores al escribir
+        """
         try:
-            if os.path.exists(self.memory_path):
-                with open(self.memory_path, "r", encoding="utf-8") as f:
-                    return json.load(f)[-self.max_history:]
-            return []
-        except:
-            return []
+            # Truncar si excede el tamaño máximo
+            if len(self.history) > settings.memory.max_size:
+                old_size = len(self.history)
+                self.history = self.history[-settings.memory.max_size:]
+                logger.warning(
+                    f"Historial truncado de {old_size} a "
+                    f"{settings.memory.max_size} mensajes"
+                )
+            
+            # Guardar
+            with open(self.memory_path, 'w', encoding='utf-8') as f:
+                json.dump(self.history, f, indent=2, ensure_ascii=False)
+            
+            logger.debug(f"Historial guardado: {len(self.history)} mensajes")
+            
+        except Exception as e:
+            logger.error(f"Error al guardar historial: {e}")
+            raise MemoryWriteError(f"No se pudo guardar la memoria: {e}")
     
-    def save_memory(self):
-        try:
-            with open(self.memory_path, "w", encoding="utf-8") as f:
-                json.dump(self.history[-self.max_history:], f, indent=2, ensure_ascii=False)
-        except:
-            pass
+    def _build_context(self) -> str:
+        """
+        Construye el contexto para el LLM basado en el historial reciente.
+        
+        Usa solo los últimos N mensajes según CONTEXT_WINDOW_SIZE
+        para no sobrecargar el contexto del modelo.
+        
+        Returns:
+            String con el contexto formateado para el LLM
+        """
+        context_size = settings.memory.context_size
+        recent_history = self.history[-context_size:] if self.history else []
+        
+        # System prompt base
+        context = (
+            "Eres Pat, un asistente de programación experto y amigable.\n"
+            "Ayudas a los desarrolladores con:\n"
+            "- Explicaciones claras de conceptos\n"
+            "- Ejemplos de código prácticos\n"
+            "- Debugging y resolución de problemas\n"
+            "- Mejores prácticas y patrones\n\n"
+        )
+        
+        # Agregar conversación reciente si existe
+        if recent_history:
+            context += "Conversación reciente:\n"
+            for msg in recent_history:
+                role_display = "Usuario" if msg["role"] == "user" else "Pat"
+                context += f"{role_display}: {msg['content']}\n"
+            context += "\n"
+        
+        return context
     
-    def clear_memory(self):
-        self.history = []
-        self.save_memory()
-    
-    def ask(self, prompt: str, stream: bool = True) -> str:
-        self.history.append({"role": "user", "content": prompt})
+    def _call_ollama(self, prompt: str) -> str:
+        """
+        Realiza una llamada al servidor Ollama para generar una respuesta.
+        
+        Args:
+            prompt: Prompt completo a enviar a Ollama (incluye contexto)
+            
+        Returns:
+            Respuesta generada por el modelo
+            
+        Raises:
+            OllamaConnectionError: Si no se puede conectar con Ollama
+            OllamaTimeoutError: Si la respuesta tarda más del timeout
+            OllamaModelNotFoundError: Si el modelo no está disponible
+            OllamaResponseError: Si la respuesta es inválida
+        """
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False
+        }
         
         try:
-            messages = [{"role": "system", "content": self.system_prompt}]
-            messages.extend(self.history[-20:])
+            logger.debug(f"Enviando request a Ollama: {self.ollama_url}")
+            logger.debug(f"Modelo: {self.model}, Timeout: {self.timeout}s")
             
             response = requests.post(
-                f"{self.base_url}/api/chat",
-                json={"model": self.model, "messages": messages, "stream": stream},
-                stream=stream,
-                timeout=120
+                self.ollama_url,
+                json=payload,
+                timeout=self.timeout
             )
             
-            if stream:
-                full_response = ""
-                for line in response.iter_lines():
-                    if line:
-                        data = json.loads(line.decode('utf-8'))
-                        if 'message' in data:
-                            chunk = data['message'].get('content', '')
-                            print(chunk, end='', flush=True)
-                            full_response += chunk
-                        if data.get('done'):
-                            break
-                print()
-                self.history.append({"role": "assistant", "content": full_response})
-                self.save_memory()
-                return full_response
-            else:
-                data = response.json()
-                answer = data.get("message", {}).get("content", "").strip()
-                self.history.append({"role": "assistant", "content": answer})
-                self.save_memory()
-                return answer
-        except Exception as e:
-            return f"❌ Error: {e}"
+            # Manejar códigos de error específicos
+            if response.status_code == 404:
+                logger.error(f"Modelo '{self.model}' no encontrado")
+                raise OllamaModelNotFoundError(
+                    f"El modelo '{self.model}' no está disponible en Ollama.\n"
+                    f"Descárgalo con: ollama pull {self.model}"
+                )
+            
+            # Verificar otros errores HTTP
+            response.raise_for_status()
+            
+            # Parsear respuesta
+            try:
+                result = response.json()
+            except json.JSONDecodeError as e:
+                logger.error(f"Respuesta JSON inválida: {e}")
+                raise OllamaResponseError("La respuesta de Ollama no es JSON válido")
+            
+            # Extraer texto de respuesta
+            answer = result.get("response", "")
+            
+            if not answer:
+                logger.warning("Ollama devolvió respuesta vacía")
+                return "Lo siento, no pude generar una respuesta. Intenta reformular tu pregunta."
+            
+            logger.debug(f"Respuesta recibida: {len(answer)} caracteres")
+            return answer
+            
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout después de {self.timeout}s")
+            raise OllamaTimeoutError(
+                f"Ollama no respondió en {self.timeout} segundos.\n"
+                f"Posibles soluciones:\n"
+                f"- Aumenta REQUEST_TIMEOUT en .env\n"
+                f"- Verifica que Ollama no esté sobrecargado\n"
+                f"- Prueba con un modelo más pequeño"
+            )
+            
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Error de conexión: {e}")
+            raise OllamaConnectionError(
+                "No se pudo conectar con Ollama.\n"
+                "Verifica que esté corriendo: ollama serve"
+            )
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error en request HTTP: {e}")
+            raise OllamaConnectionError(f"Error al comunicarse con Ollama: {e}")
     
-    def read_file_command(self, filepath: str) -> str:
-        if not self.file_manager:
-            return "❌ File operations deshabilitadas"
+    def ask(self, prompt: str) -> str:
+        """
+        Procesa una pregunta del usuario y devuelve la respuesta del asistente.
+        
+        Este método:
+        1. Valida el prompt
+        2. Lo agrega al historial
+        3. Construye el contexto
+        4. Llama a Ollama
+        5. Guarda la respuesta
+        6. Persiste el historial
+        
+        Args:
+            prompt: Pregunta o comando del usuario
+            
+        Returns:
+            Respuesta generada por el asistente
+            
+        Raises:
+            InvalidPromptError: Si el prompt no es válido
+            OllamaConnectionError: Si hay problemas con Ollama
+            OllamaTimeoutError: Si Ollama no responde a tiempo
+            MemoryWriteError: Si no se puede guardar el historial
+        """
+        # 1. Validar input
         try:
-            data = self.file_manager.read_file(filepath)
-            output = f"\n📄 {data['name']}\n{'='*60}\nLíneas: {data['lines']}\n{'='*60}\n\n{data['content']}"
-            print(output)
-            return output
-        except Exception as e:
-            return f"❌ Error: {e}"
-    
-    def list_files_command(self, pattern: str = "*") -> List[str]:
-        if not self.file_manager:
-            return []
+            validated_prompt = InputValidator.validate_prompt(prompt)
+        except InvalidPromptError as e:
+            logger.warning(f"Prompt inválido rechazado: {e}")
+            raise
+        
+        # 2. Agregar pregunta al historial
+        user_message = {"role": "user", "content": validated_prompt}
+        self.history.append(user_message)
+        logger.debug(f"Pregunta agregada al historial: '{validated_prompt[:50]}...'")
+        
         try:
-            files = self.file_manager.list_files(pattern)
-            print(f"\n📁 Archivos ({len(files)}):")
-            for f in files:
-                print(f"  • {f}")
-            return files
-        except:
-            return []
-    
-    def analyze_project_command(self) -> Dict:
-        if not self.file_manager:
-            return {}
-        try:
-            stats = self.file_manager.analyze_project()
-            print(f"\n📊 Análisis del Proyecto\n{'='*60}")
-            print(f"Total archivos: {stats['total_files']}")
-            print(f"Total líneas: {stats['total_lines']:,}\n")
-            print("🗣️ Lenguajes:")
-            for lang, data in stats['languages'].items():
-                print(f"  • {lang}: {data['files']} archivos, {data['lines']:,} líneas")
-            return stats
+            # 3. Construir contexto
+            context = self._build_context()
+            full_prompt = f"{context}\nUsuario: {validated_prompt}\nPat:"
+            
+            # 4. Llamar a Ollama
+            answer = self._call_ollama(full_prompt)
+            
+            # 5. Agregar respuesta al historial
+            assistant_message = {"role": "assistant", "content": answer}
+            self.history.append(assistant_message)
+            logger.debug(f"Respuesta agregada al historial: '{answer[:50]}...'")
+            
+            # 6. Guardar memoria
+            self._save_history()
+            
+            return answer
+            
+        except (OllamaConnectionError, OllamaTimeoutError, OllamaModelNotFoundError) as e:
+            # Si falla, revertir el último mensaje del usuario
+            self.history.pop()
+            logger.error(f"Error al procesar pregunta, historial revertido: {e}")
+            raise
+            
         except Exception as e:
-            print(f"❌ Error: {e}")
-            return {}
+            # Error inesperado
+            self.history.pop()
+            logger.exception("Error inesperado al procesar pregunta")
+            raise PatCodeError(f"Error inesperado: {e}")
     
-    def get_stats(self) -> Dict:
+    def clear_history(self) -> None:
+        """
+        Limpia completamente el historial de conversación.
+        
+        Raises:
+            MemoryWriteError: Si no se puede guardar el historial vacío
+        """
+        logger.info("Limpiando historial...")
+        self.history = []
+        self._save_history()
+        logger.info("Historial limpiado exitosamente")
+    
+    def get_stats(self) -> Dict[str, any]:
+        """
+        Obtiene estadísticas sobre el estado actual del agente.
+        
+        Returns:
+            Diccionario con estadísticas
+        """
         return {
             "total_messages": len(self.history),
-            "user_messages": sum(1 for m in self.history if m['role'] == 'user'),
-            "assistant_messages": sum(1 for m in self.history if m['role'] == 'assistant'),
-            "memory_size_kb": os.path.getsize(self.memory_path) / 1024 if os.path.exists(self.memory_path) else 0,
-            "version": "3.0",
-            "features": {
-                "file_operations": self.enable_file_operations,
-                "tool_calling": self.enable_tools,
-                "planning": self.enable_planning
-            }
+            "user_messages": sum(1 for msg in self.history if msg["role"] == "user"),
+            "assistant_messages": sum(1 for msg in self.history if msg["role"] == "assistant"),
+            "model": self.model,
+            "memory_path": str(self.memory_path),
         }
     
-    def export_conversation(self, output_path: str = "conversation_export.md"):
+    def export_history(self, output_path: Path) -> None:
+        """
+        Exporta el historial a un archivo específico.
+        
+        Args:
+            output_path: Ruta donde exportar el historial
+            
+        Raises:
+            MemoryWriteError: Si no se puede escribir el archivo
+        """
         try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(f"# PatCode v3.0\n**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-                for msg in self.history:
-                    role = "👤" if msg['role'] == 'user' else "🤖"
-                    f.write(f"## {role}\n\n{msg['content']}\n\n---\n\n")
-            print(f"✅ Exportado: {output_path}")
-        except:
-            pass
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(self.history, f, indent=2, ensure_ascii=False)
+            logger.info(f"Historial exportado a: {output_path}")
+        except Exception as e:
+            logger.error(f"Error al exportar historial: {e}")
+            raise MemoryWriteError(f"No se pudo exportar el historial: {e}")

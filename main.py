@@ -1,100 +1,292 @@
 """
-PatCode - Asistente de programación local con capacidades de agente autónomo
+PatCode - CLI Principal
+
+Interfaz de línea de comandos para interactuar con el asistente Pat.
 """
 
-from agents.tool_agent import ToolAgent
+import sys
+import logging
+from pathlib import Path
+
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import Prompt
 from rich.markdown import Markdown
-import sys
 
+from agents.pat_agent import PatAgent
+from config import settings
+from exceptions import (
+    PatCodeError,
+    OllamaConnectionError,
+    OllamaTimeoutError,
+    OllamaModelNotFoundError,
+    InvalidPromptError,
+    ConfigurationError
+)
 
-def print_welcome():
-    """Muestra mensaje de bienvenida"""
-    console = Console()
+# Console de Rich para output mejorado
+console = Console()
+
+# Logger
+logger = logging.getLogger(__name__)
+
+def setup_logging() -> None:
+    """
+    Configura el sistema de logging basado en settings.
     
-    welcome_text = """
-# 🤖 PatCode - Asistente de Programación Local
+    Si settings.logging.file está habilitado, escribe a archivo.
+    Siempre muestra WARNING+ en consola.
+    """
+    import logging
+    from config.settings import settings
+    from rich.console import Console
 
-**Capacidades actuales:**
-- 📖 Leer y analizar archivos
-- ✏️ Editar y crear archivos
-- 🔧 Ejecutar comandos y tests
-- 🔀 Operaciones Git (status, diff, commit)
-- 🧠 Memoria de conversación
+    console = Console()
+    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    
+    handlers = []
 
-**Comandos especiales:**
-- `exit`, `quit`, `salir`: Salir del asistente
-- `reset`: Reiniciar conversación
-- `help`: Mostrar esta ayuda
+    # Handler de archivo si está habilitado
+    if settings.logging.file:
+        try:
+            # Asegurarse que el directorio exista
+            log_path = Path(settings.logging.filename)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
 
-**Ejemplos de uso:**
-```
-"Lee el archivo main.py y explícame qué hace"
-"Crea un archivo test_example.py con un test básico"
-"Ejecuta los tests y dime si pasan"
-"Muestra el status de git"
-"Haz un commit con mensaje 'feat: add new feature'"
-```
+            file_handler = logging.FileHandler(log_path)
+            file_handler.setLevel(settings.logging.level)
+            file_handler.setFormatter(logging.Formatter(log_format))
+            handlers.append(file_handler)
+        except Exception as e:
+            console.print(f"[yellow]⚠️  No se pudo crear archivo de log: {e}[/yellow]")
+
+    # Handler de consola (solo WARNING+)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.WARNING)
+    console_handler.setFormatter(logging.Formatter(log_format))
+    handlers.append(console_handler)
+
+    # Configurar logger raíz
+    logging.basicConfig(
+        level=settings.logging.level,
+        format=log_format,
+        handlers=handlers
+    )
+
+def print_welcome() -> None:
+    """Muestra el mensaje de bienvenida con información del sistema."""
+    welcome_text = f"""
+[bold cyan]🤖 PatCode - Asistente de Programación Local[/bold cyan]
+
+[dim]Versión: 0.2.0 | Modelo: {settings.ollama.model}[/dim]
+
+[bold]Comandos disponibles:[/bold]
+  [yellow]/clear[/yellow]     - Limpiar historial de conversación
+  [yellow]/stats[/yellow]     - Ver estadísticas de la sesión
+  [yellow]/export[/yellow]    - Exportar historial
+  [yellow]/quit[/yellow]      - Salir de PatCode
+  [yellow]/exit[/yellow]      - Salir de PatCode
+  [yellow]Ctrl+C[/yellow]     - Salir (con confirmación)
+
+[dim]Escribe tu pregunta y presiona Enter para comenzar.[/dim]
     """
     
-    console.print(Panel(Markdown(welcome_text), border_style="cyan"))
+    console.print(Panel(welcome_text, border_style="cyan", padding=(1, 2)))
 
 
-def main():
-    """Función principal del asistente"""
-    console = Console()
+def handle_special_commands(command: str, agent: PatAgent) -> bool:
+    """
+    Maneja comandos especiales del sistema.
     
-    # Mostrar bienvenida
-    print_welcome()
+    Args:
+        command: Comando ingresado por el usuario
+        agent: Instancia del agente
+        
+    Returns:
+        True si debe continuar el loop, False si debe salir
+    """
+    command = command.lower().strip()
     
-    # Inicializar agente
-    console.print("\n[yellow]Inicializando PatCode...[/yellow]")
+    # Comandos de salida
+    if command in ["/quit", "/exit"]:
+        console.print("[yellow]👋 ¡Hasta luego![/yellow]")
+        return False
+    
+    # Limpiar historial
+    elif command == "/clear":
+        try:
+            agent.clear_history()
+            console.print("[green]✓ Historial limpiado[/green]")
+        except Exception as e:
+            console.print(f"[red]✗ Error al limpiar: {e}[/red]")
+    
+    # Mostrar estadísticas
+    elif command == "/stats":
+        stats = agent.get_stats()
+        stats_text = f"""
+[bold]Estadísticas de la sesión:[/bold]
+
+  Total de mensajes: {stats['total_messages']}
+  Mensajes de usuario: {stats['user_messages']}
+  Respuestas de Pat: {stats['assistant_messages']}
+  Modelo: {stats['model']}
+  Memoria: {stats['memory_path']}
+        """
+        console.print(Panel(stats_text, border_style="blue", title="📊 Stats"))
+    
+    # Exportar historial
+    elif command == "/export":
+        try:
+            export_path = Path(f"./data/exports/history_export.json")
+            agent.export_history(export_path)
+            console.print(f"[green]✓ Historial exportado a: {export_path}[/green]")
+        except Exception as e:
+            console.print(f"[red]✗ Error al exportar: {e}[/red]")
+    
+    # Comando desconocido
+    else:
+        console.print(f"[yellow]⚠️  Comando desconocido: {command}[/yellow]")
+        console.print("[dim]Usa /quit, /clear, /stats o /export[/dim]")
+    
+    return True
+
+
+def main() -> None:
+    """
+    Función principal del CLI.
+    
+    Maneja el loop de interacción, procesamiento de comandos
+    y manejo de errores.
+    """
+    # Setup
+    setup_logging()
+    logger.info("Iniciando PatCode...")
     
     try:
-        agent = ToolAgent(
-            model="qwen2.5-coder:14b",  # Cambiar por el modelo que tengas
-            project_path="."
-        )
-        console.print("[green]✓ PatCode listo para usar[/green]\n")
-    except Exception as e:
-        console.print(f"[red]Error al inicializar: {e}[/red]")
-        console.print("[yellow]Verifica que Ollama esté corriendo: ollama serve[/yellow]")
-        sys.exit(1)
-    
-    # Loop principal
-    while True:
-        try:
-            # Obtener input del usuario
-            user_input = console.input("\n[bold cyan]Tú >[/bold cyan] ")
+        # Inicializar agente
+        with console.status("[bold yellow]Inicializando PatCode...[/bold yellow]"):
+            agent = PatAgent()
+        
+        # Mostrar bienvenida
+        print_welcome()
+        
+        # Loop principal
+        while True:
+            try:
+                # Obtener input del usuario
+                prompt = Prompt.ask("\n[bold green]Tú[/bold green]")
+                
+                # Verificar si es un comando especial
+                if prompt.startswith('/'):
+                    should_continue = handle_special_commands(prompt, agent)
+                    if not should_continue:
+                        break
+                    continue
+                
+                # Procesar pregunta normal
+                with console.status("[bold yellow]🤔 Pat está pensando...[/bold yellow]"):
+                    answer = agent.ask(prompt)
+                
+                # Mostrar respuesta
+                console.print(f"\n[bold cyan]Pat:[/bold cyan]")
+                console.print(Markdown(answer))
+                
+            except InvalidPromptError as e:
+                console.print(f"[yellow]⚠️  {e}[/yellow]")
+                console.print("[dim]Tip: Escribe una pregunta no vacía[/dim]")
             
-            # Comandos especiales
-            if user_input.lower() in ["exit", "quit", "salir"]:
-                console.print("\n[yellow]👋 Hasta luego![/yellow]")
+            except OllamaModelNotFoundError as e:
+                console.print(f"[red]🔍 {e}[/red]")
+                console.print(
+                    f"[yellow]Tip: Descarga el modelo con:[/yellow]\n"
+                    f"  [cyan]ollama pull {settings.ollama.model}[/cyan]"
+                )
+                retry = Prompt.ask("¿Continuar esperando?", choices=["s", "n"], default="n")
+                if retry == "n":
+                    break
+            
+            except OllamaTimeoutError as e:
+                console.print(f"[red]⏱️  {e}[/red]")
+                console.print(
+                    "[yellow]Tip: Aumenta REQUEST_TIMEOUT en .env o usa un modelo más rápido[/yellow]"
+                )
+                retry = Prompt.ask("¿Intentar de nuevo?", choices=["s", "n"], default="s")
+                if retry == "n":
+                    break
+            
+            except OllamaConnectionError as e:
+                console.print(f"[red]🔌 {e}[/red]")
+                console.print(
+                    "[yellow]Verifica que Ollama esté corriendo:[/yellow]\n"
+                    "  [cyan]ollama serve[/cyan]"
+                )
+                retry = Prompt.ask("¿Reintentar conexión?", choices=["s", "n"], default="s")
+                if retry == "n":
+                    break
+            
+            except KeyboardInterrupt:
+                console.print("\n[yellow]⏸️  Interrumpido por el usuario[/yellow]")
+                save = Prompt.ask(
+                    "¿Guardar historial antes de salir?", 
+                    choices=["s", "n"], 
+                    default="s"
+                )
+                if save == "s":
+                    try:
+                        agent._save_history()
+                        console.print("[green]✓ Historial guardado[/green]")
+                    except Exception as e:
+                        console.print(f"[red]✗ Error al guardar: {e}[/red]")
                 break
             
-            if user_input.lower() == "reset":
-                agent.reset_conversation()
-                continue
+            except PatCodeError as e:
+                console.print(f"[red]❌ Error: {e}[/red]")
+                logger.exception("Error manejado en main loop")
+                
+                # Ofrecer continuar o salir
+                continue_chat = Prompt.ask(
+                    "¿Deseas continuar?", 
+                    choices=["s", "n"], 
+                    default="s"
+                )
+                if continue_chat == "n":
+                    break
             
-            if user_input.lower() == "help":
-                print_welcome()
-                continue
-            
-            if not user_input.strip():
-                continue
-            
-            # Procesar mensaje
-            response = agent.ask(user_input)
-            
-            # Mostrar respuesta
-            console.print(f"\n[bold green]PatCode >[/bold green] {response}")
-            
-        except KeyboardInterrupt:
-            console.print("\n\n[yellow]👋 Hasta luego![/yellow]")
-            break
-        except Exception as e:
-            console.print(f"\n[red]Error: {e}[/red]")
+            except Exception as e:
+                console.print(f"[red]💥 Error inesperado: {e}[/red]")
+                logger.exception("Error no manejado en main loop")
+                console.print(
+                    "[yellow]Por favor reporta este error en:[/yellow]\n"
+                    "  [cyan]https://github.com/gonzacba17/Patcode/issues[/cyan]"
+                )
+                
+                # Ofrecer continuar o salir
+                continue_chat = Prompt.ask(
+                    "¿Deseas continuar (puede ser inestable)?", 
+                    choices=["s", "n"], 
+                    default="n"
+                )
+                if continue_chat == "n":
+                    break
+    
+    except KeyboardInterrupt:
+        console.print("\n[yellow]👋 Saliendo...[/yellow]")
+        sys.exit(0)
+    
+    except ConfigurationError as e:
+        console.print(f"[red]⚙️  Error de configuración: {e}[/red]")
+        console.print(
+            "[yellow]Verifica tu archivo .env y compáralo con .env.example[/yellow]"
+        )
+        logger.exception("Error de configuración")
+        sys.exit(1)
+    
+    except Exception as e:
+        console.print(f"[red]💥 Error fatal al inicializar: {e}[/red]")
+        logger.exception("Error fatal")
+        sys.exit(1)
+    
+    logger.info("PatCode finalizado correctamente")
 
 
 if __name__ == "__main__":

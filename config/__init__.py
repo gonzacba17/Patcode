@@ -1,6 +1,11 @@
 """
 Módulo de configuración de PatCode
 """
+
+# IMPORTANTE: Exportar la instancia settings primero
+from config.settings import settings
+
+# Importar constantes legacy para compatibilidad
 from config.settings import (
     OLLAMA_BASE_URL,
     OLLAMA_MODEL,
@@ -28,7 +33,10 @@ from config.models import (
 )
 
 __all__ = [
-    # Settings
+    # INSTANCIA PRINCIPAL
+    'settings',
+    
+    # Settings (legacy)
     'OLLAMA_BASE_URL',
     'OLLAMA_MODEL',
     'WORKSPACE_DIR',

@@ -17,6 +17,9 @@ prompt-toolkit>=3.0.43,<4.0.0
 # CLI estructurado con comandos
 click>=8.1.7,<9.0.0
 
+# Hardware detection para model selector
+psutil>=5.9.0,<6.0.0
+
 
 # ================================
 # OPTIONAL DEPENDENCIES

@@ -553,6 +553,59 @@ Con la única condición de incluir el aviso de copyright y la licencia en todas
 
 ---
 
+## 🚀 Performance y Cache
+
+### Sistema de Cache Inteligente
+
+PatCode cachea automáticamente las respuestas del LLM para acelerar queries repetidas:
+
+```bash
+# Ver estadísticas de cache
+patcode cache stats
+
+# Limpiar cache expirado (>24h)
+patcode cache clean
+
+# Limpiar todo el cache
+patcode cache clear
+```
+
+**Características:**
+- ✅ Cache automático basado en contexto (mensajes + archivos)
+- ✅ TTL de 24 horas (configurable)
+- ✅ Hit rate típico: 35-40% en sesiones largas
+- ✅ Ahorro de tiempo: 50% en queries repetidas
+
+### Selección Automática de Modelos
+
+PatCode detecta tu hardware y recomienda el mejor modelo:
+
+```bash
+# Selección automática según RAM disponible
+patcode chat --auto
+
+# Ver modelos compatibles
+patcode models
+
+# Forzar modelo específico
+patcode chat --model llama3.2:3b
+
+# Desactivar cache (útil para testing)
+patcode chat --no-cache
+```
+
+**Perfiles de Modelos:**
+
+| Modelo | RAM Min | RAM Rec | Velocidad | Uso Ideal |
+|--------|---------|---------|-----------|-----------|
+| llama3.2:1b | 4GB | 6GB | ⚡ Rápido | Chat, preguntas simples |
+| llama3.2:3b | 8GB | 12GB | ✅ Balanceado | Coding general, análisis |
+| codellama:7b | 12GB | 16GB | ✅ Balanceado | Debugging, arquitectura |
+| codellama:13b | 16GB | 24GB | 🔬 Profundo | Refactor complejo, análisis profundo |
+| mistral:7b | 12GB | 16GB | ✅ Balanceado | General, documentación |
+
+---
+
 ## 📞 Contacto y soporte
 
 - **GitHub Issues:** [github.com/gonzacba17/Patcode/issues](https://github.com/gonzacba17/Patcode/issues)

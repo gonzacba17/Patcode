@@ -25,6 +25,8 @@ from exceptions import (
 )
 from utils.validators import InputValidator, MemoryValidator
 from utils.file_manager import FileManager
+from utils.response_cache import ResponseCache
+from config.model_selector import get_model_selector
 from agents.memory.memory_manager import MemoryManager, MemoryConfig
 
 # Configurar logger
@@ -63,6 +65,20 @@ class PatAgent:
         
         # Inicializar FileManager
         self.file_manager = FileManager()
+        
+        # Sistema de cache
+        self.cache = ResponseCache(
+            cache_dir='.patcode_cache',
+            ttl_hours=24
+        )
+        
+        # Model selector
+        self.model_selector = get_model_selector()
+        
+        # Log info del modelo
+        model_info = self.model_selector.get_model_info(self.model)
+        if model_info:
+            logger.info(f"Usando modelo: {model_info}")
         
         # Configurar MemoryManager
         memory_config = MemoryConfig(
@@ -174,7 +190,7 @@ class PatAgent:
     
     def _call_ollama(self, prompt: str) -> str:
         """
-        Realiza una llamada al servidor Ollama para generar una respuesta.
+        Realiza una llamada al servidor Ollama para generar una respuesta con cache.
         
         Args:
             prompt: Prompt completo a enviar a Ollama (incluye contexto)
@@ -188,6 +204,18 @@ class PatAgent:
             OllamaModelNotFoundError: Si el modelo no está disponible
             OllamaResponseError: Si la respuesta es inválida
         """
+        query_hash = self.cache._hash_query(
+            self.memory_manager.active_memory,
+            list(self.file_manager.loaded_files.values())
+        )
+        
+        if self.model_selector.should_use_cache(self.model):
+            cached_response = self.cache.get(query_hash)
+            
+            if cached_response:
+                logger.info("💾 Usando respuesta cacheada")
+                return cached_response
+        
         payload = {
             "model": self.model,
             "prompt": prompt,
@@ -204,7 +232,6 @@ class PatAgent:
                 timeout=self.timeout
             )
             
-            # Manejar códigos de error específicos
             if response.status_code == 404:
                 logger.error(f"Modelo '{self.model}' no encontrado")
                 raise OllamaModelNotFoundError(
@@ -212,22 +239,29 @@ class PatAgent:
                     f"Descárgalo con: ollama pull {self.model}"
                 )
             
-            # Verificar otros errores HTTP
             response.raise_for_status()
             
-            # Parsear respuesta
             try:
                 result = response.json()
             except json.JSONDecodeError as e:
                 logger.error(f"Respuesta JSON inválida: {e}")
                 raise OllamaResponseError("La respuesta de Ollama no es JSON válido")
             
-            # Extraer texto de respuesta
             answer = result.get("response", "")
             
             if not answer:
                 logger.warning("Ollama devolvió respuesta vacía")
                 return "Lo siento, no pude generar una respuesta. Intenta reformular tu pregunta."
+            
+            self.cache.set(
+                query_hash,
+                answer,
+                metadata={
+                    'model': self.model,
+                    'timestamp': result.get('created_at'),
+                    'eval_count': result.get('eval_count')
+                }
+            )
             
             logger.debug(f"Respuesta recibida: {len(answer)} caracteres")
             return answer
@@ -361,8 +395,9 @@ class PatAgent:
         """
         file_stats = self.file_manager.get_stats()
         memory_stats = self.memory_manager.get_stats()
+        cache_stats = self.cache.get_stats()
         
-        return {
+        base_stats = {
             "total_messages": memory_stats['total_context'],
             "active_messages": memory_stats['active_messages'],
             "passive_summaries": memory_stats['passive_summaries'],
@@ -372,8 +407,19 @@ class PatAgent:
             "memory_path": str(self.memory_path),
             "loaded_files": file_stats['total_files'],
             "files_size_kb": file_stats['total_size_kb'],
-            "files_usage_percent": file_stats['usage_percent']
+            "files_usage_percent": file_stats['usage_percent'],
+            "cache_hits": cache_stats['cache_hits'],
+            "cache_misses": cache_stats['cache_misses'],
+            "cache_hit_rate": cache_stats['hit_rate'],
+            "cache_size": cache_stats['cache_size']
         }
+        
+        model_info = self.model_selector.get_model_info(self.model)
+        if model_info:
+            base_stats['model_speed'] = self.model_selector.get_speed_recommendation(self.model)
+            base_stats['model_ram_required'] = f"{model_info.ram_recommended}GB"
+        
+        return base_stats
     
     def export_history(self, output_path: Path) -> None:
         """

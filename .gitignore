@@ -61,3 +61,7 @@ Thumbs.db
 # Backup files
 *_backup_*
 *.bak
+
+# PatCode cache
+.patcode_cache/
+.patcode_history

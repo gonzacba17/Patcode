@@ -29,6 +29,10 @@ from utils.logger import setup_logger
 from utils.retry import retry_with_backoff
 from config.model_selector import get_model_selector
 from agents.memory.memory_manager import MemoryManager, MemoryConfig
+from rag.embeddings import EmbeddingGenerator
+from rag.vector_store import VectorStore
+from rag.code_indexer import CodeIndexer
+from rag.retriever import ContextRetriever
 
 logger = setup_logger(__name__)
 
@@ -103,6 +107,20 @@ class PatAgent:
         
         # Mantener referencia a history para compatibilidad
         self.history = self.memory_manager.active_memory
+        
+        # Sistema RAG
+        try:
+            self.embedding_gen = EmbeddingGenerator()
+            self.vector_store = VectorStore()
+            self.code_indexer = CodeIndexer(self.vector_store, self.embedding_gen)
+            self.retriever = ContextRetriever(self.vector_store, self.embedding_gen)
+            logger.info("Sistema RAG inicializado")
+        except Exception as e:
+            logger.warning(f"No se pudo inicializar sistema RAG: {e}")
+            self.embedding_gen = None
+            self.vector_store = None
+            self.code_indexer = None
+            self.retriever = None
         
         # Auto-cargar README si existe
         self._auto_load_readme()
@@ -295,6 +313,76 @@ class PatAgent:
             logger.error(f"Error en request HTTP: {e}")
             raise OllamaConnectionError(f"Error al comunicarse con Ollama: {e}")
     
+    def process_command(self, user_input: str) -> Optional[str]:
+        if user_input == '!index':
+            if not self.code_indexer:
+                return "Sistema RAG no disponible"
+            stats = self.code_indexer.index_project()
+            return f"✅ Proyecto indexado:\n" \
+                   f"  - Archivos procesados: {stats['files_processed']}\n" \
+                   f"  - Chunks creados: {stats['chunks_indexed']}\n" \
+                   f"  - Archivos omitidos: {stats['files_skipped']}"
+        
+        elif user_input.startswith('!index '):
+            if not self.code_indexer:
+                return "Sistema RAG no disponible"
+            filepath = Path(user_input[7:].strip())
+            chunks = self.code_indexer.index_file(filepath)
+            return f"✅ {filepath} indexado ({chunks} chunks)"
+        
+        elif user_input.startswith('!search '):
+            if not self.embedding_gen or not self.vector_store:
+                return "Sistema RAG no disponible"
+            query = user_input[8:].strip()
+            query_emb = self.embedding_gen.generate_embedding(query)
+            results = self.vector_store.search(query_emb, top_k=5)
+            
+            if not results:
+                return "No se encontraron resultados"
+            
+            output = ["🔍 Resultados de búsqueda:\n"]
+            for i, r in enumerate(results, 1):
+                output.append(
+                    f"{i}. {r['filepath']} (L{r['start_line']}-{r['end_line']}) "
+                    f"- Similitud: {r['similarity']:.2f}"
+                )
+            return '\n'.join(output)
+        
+        elif user_input.startswith('!related '):
+            if not self.retriever:
+                return "Sistema RAG no disponible"
+            filepath = user_input[9:].strip()
+            related = self.retriever.retrieve_related_code(filepath, top_k=5)
+            
+            if not related:
+                return "No se encontró código relacionado"
+            
+            output = [f"🔗 Código relacionado a {filepath}:\n"]
+            for i, r in enumerate(related, 1):
+                output.append(
+                    f"{i}. {r['filepath']} (L{r['start_line']}-{r['end_line']}) "
+                    f"- Similitud: {r['similarity']:.2f}"
+                )
+            return '\n'.join(output)
+        
+        elif user_input == '!rag-stats':
+            if not self.vector_store:
+                return "Sistema RAG no disponible"
+            stats = self.vector_store.get_stats()
+            return f"📊 Estadísticas RAG:\n" \
+                   f"  - Documentos: {stats['total_documents']}\n" \
+                   f"  - Archivos: {stats['total_files']}\n" \
+                   f"  - Por tipo: {stats['by_chunk_type']}"
+        
+        elif user_input == '!clear-index':
+            if not self.vector_store or not self.embedding_gen:
+                return "Sistema RAG no disponible"
+            self.vector_store.clear()
+            self.embedding_gen.clear_cache()
+            return "✅ Índice RAG limpiado"
+        
+        return None
+    
     def ask(self, prompt: str) -> str:
         """
         Procesa una pregunta del usuario y devuelve la respuesta del asistente.
@@ -319,6 +407,12 @@ class PatAgent:
             OllamaTimeoutError: Si Ollama no responde a tiempo
             MemoryWriteError: Si no se puede guardar el historial
         """
+        # Verificar comandos RAG
+        if prompt.startswith('!'):
+            result = self.process_command(prompt)
+            if result:
+                return result
+        
         # 1. Validar input
         try:
             validated_prompt = InputValidator.validate_prompt(prompt)
@@ -331,8 +425,16 @@ class PatAgent:
         logger.debug(f"Pregunta agregada al historial: '{validated_prompt[:50]}...'")
         
         try:
-            # 3. Construir contexto (ahora incluye archivos)
+            # 3. Construir contexto (ahora incluye archivos y RAG)
             context = self._build_context()
+            
+            # Recuperar contexto RAG si está disponible
+            rag_context = ""
+            if self.retriever:
+                try:
+                    rag_context = self.retriever.retrieve_context(validated_prompt, top_k=3)
+                except Exception as e:
+                    logger.warning(f"Error recuperando contexto RAG: {e}")
             
             # Si hay archivos cargados Y el usuario pregunta sobre código específico,
             # agregar el contenido del archivo relevante
@@ -352,9 +454,9 @@ class PatAgent:
                             if len(loaded_file.content) > 5000:
                                 files_content += "\n... (archivo truncado por tamaño)"
                             files_content += "\n\n"
-                            break  # Solo un archivo por consulta
+                            break
             
-            full_prompt = f"{context}\n{files_content}\nUsuario: {validated_prompt}\nPat:"
+            full_prompt = f"{context}\n{rag_context}\n{files_content}\nUsuario: {validated_prompt}\nPat:"
             
             # 4. Llamar a Ollama
             answer = self._call_ollama(full_prompt)

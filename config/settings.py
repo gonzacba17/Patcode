@@ -187,9 +187,22 @@ class SecuritySettings:
 class AnalysisSettings:
     """Configuración para análisis de código"""
     enable_cache: bool = os.getenv("ENABLE_ANALYSIS_CACHE", "true").lower() == "true"
-    cache_expiration_time: int = int(os.getenv("CACHE_EXPIRATION_TIME", "3600"))  # 1 hora
+    cache_expiration_time: int = int(os.getenv("CACHE_EXPIRATION_TIME", "3600"))
     enable_semantic_search: bool = os.getenv("ENABLE_SEMANTIC_SEARCH", "false").lower() == "true"
     enable_static_analysis: bool = os.getenv("ENABLE_STATIC_ANALYSIS", "false").lower() == "true"
+
+
+@dataclass
+class RAGSettings:
+    """Configuración del sistema RAG"""
+    enabled: bool = os.getenv("RAG_ENABLED", "true").lower() == "true"
+    embedding_model: str = os.getenv("RAG_EMBEDDING_MODEL", "nomic-embed-text")
+    vector_db_path: Path = BASE_DIR / ".patcode_cache" / "vectors.db"
+    embeddings_cache_path: Path = BASE_DIR / ".patcode_cache" / "embeddings.db"
+    chunk_size: int = int(os.getenv("RAG_CHUNK_SIZE", "500"))
+    chunk_overlap: int = int(os.getenv("RAG_CHUNK_OVERLAP", "50"))
+    top_k_results: int = int(os.getenv("RAG_TOP_K", "5"))
+    max_file_size_mb: int = int(os.getenv("RAG_MAX_FILE_SIZE_MB", "1"))
 
 
 @dataclass
@@ -201,6 +214,18 @@ class UISettings:
     stream_responses: bool = os.getenv("STREAM_RESPONSES", "true").lower() == "true"
     verbose_mode: bool = os.getenv("VERBOSE_MODE", "false").lower() == "true"
     enable_autocomplete: bool = os.getenv("ENABLE_AUTOCOMPLETE", "true").lower() == "true"
+
+
+@dataclass
+class CLISettings:
+    """Configuración del sistema CLI"""
+    use_colors: bool = os.getenv("CLI_USE_COLORS", "true").lower() == "true"
+    auto_plan_mode: bool = os.getenv("CLI_AUTO_PLAN_MODE", "true").lower() == "true"
+    show_progress_bars: bool = os.getenv("CLI_SHOW_PROGRESS", "true").lower() == "true"
+    command_prefix: str = os.getenv("CLI_COMMAND_PREFIX", "/")
+    enable_autocomplete: bool = os.getenv("CLI_ENABLE_AUTOCOMPLETE", "true").lower() == "true"
+    plan_approval_required: bool = os.getenv("CLI_PLAN_APPROVAL", "true").lower() == "true"
+    plan_risk_threshold: str = os.getenv("CLI_PLAN_RISK_THRESHOLD", "medium")
 
 
 @dataclass
@@ -218,6 +243,7 @@ class Settings:
     - settings.files.allowed_extensions
     - settings.security.blocked_commands
     - settings.analysis.enable_cache
+    - settings.rag.enabled
     - settings.ui.enable_colors
     """
     ollama: OllamaSettings = field(default_factory=OllamaSettings)
@@ -228,7 +254,9 @@ class Settings:
     files: FileSettings = field(default_factory=FileSettings)
     security: SecuritySettings = field(default_factory=SecuritySettings)
     analysis: AnalysisSettings = field(default_factory=AnalysisSettings)
+    rag: RAGSettings = field(default_factory=RAGSettings)
     ui: UISettings = field(default_factory=UISettings)
+    cli: CLISettings = field(default_factory=CLISettings)
 
 
 # ============================================================================

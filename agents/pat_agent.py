@@ -9,7 +9,6 @@ import json
 import requests
 from pathlib import Path
 from typing import List, Dict, Optional
-import logging
 
 from config import settings
 from exceptions import (
@@ -26,11 +25,12 @@ from exceptions import (
 from utils.validators import InputValidator, MemoryValidator
 from utils.file_manager import FileManager
 from utils.response_cache import ResponseCache
+from utils.logger import setup_logger
+from utils.retry import retry_with_backoff
 from config.model_selector import get_model_selector
 from agents.memory.memory_manager import MemoryManager, MemoryConfig
 
-# Configurar logger
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class PatAgent:
@@ -188,6 +188,11 @@ class PatAgent:
         
         return context
     
+    @retry_with_backoff(
+        max_attempts=3,
+        initial_delay=1.0,
+        exceptions=(requests.exceptions.RequestException, TimeoutError)
+    )
     def _call_ollama(self, prompt: str) -> str:
         """
         Realiza una llamada al servidor Ollama para generar una respuesta con cache.
@@ -219,7 +224,10 @@ class PatAgent:
         payload = {
             "model": self.model,
             "prompt": prompt,
-            "stream": False
+            "stream": False,
+            "options": {
+                "temperature": settings.ollama.temperature
+            }
         }
         
         try:

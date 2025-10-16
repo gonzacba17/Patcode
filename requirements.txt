@@ -20,6 +20,9 @@ click>=8.1.7,<9.0.0
 # Hardware detection para model selector
 psutil>=5.9.0,<6.0.0
 
+# Pydantic settings para configuración robusta (opcional, ya usa dataclasses)
+# pydantic-settings>=2.0.0,<3.0.0
+
 
 # ================================
 # OPTIONAL DEPENDENCIES

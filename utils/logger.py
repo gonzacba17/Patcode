@@ -1,15 +1,80 @@
 """
-Sistema de logging para PatCode
+Sistema de logging profesional con colores y rotación de archivos.
 """
 
 import logging
-import os
-from datetime import datetime
-from .colors import Colors, colorize
+import sys
+from pathlib import Path
+from logging.handlers import RotatingFileHandler
+from config.settings import settings
+
+
+class ColoredFormatter(logging.Formatter):
+    """Formatter con colores ANSI para terminal"""
+    
+    COLORS = {
+        'DEBUG': '\033[36m',
+        'INFO': '\033[32m',
+        'WARNING': '\033[33m',
+        'ERROR': '\033[31m',
+        'CRITICAL': '\033[35m',
+    }
+    RESET = '\033[0m'
+    
+    def format(self, record):
+        color = self.COLORS.get(record.levelname, '')
+        record.levelname = f"{color}{record.levelname}{self.RESET}"
+        return super().format(record)
+
+
+def setup_logger(name: str) -> logging.Logger:
+    """
+    Configura logger con salida a consola (colores) y archivo (rotación).
+    
+    Args:
+        name: Nombre del logger (usa __name__)
+    
+    Returns:
+        Logger configurado
+    """
+    logger = logging.getLogger(name)
+    
+    if logger.handlers:
+        return logger
+    
+    logger.setLevel(getattr(logging, settings.logging.level))
+    
+    # Console handler con colores
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(logging.INFO)
+    console.setFormatter(ColoredFormatter(
+        '%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+        datefmt='%H:%M:%S'
+    ))
+    logger.addHandler(console)
+    
+    # File handler con rotación (10MB max, 5 backups)
+    if settings.logging.file:
+        log_path = Path(settings.logging.filename)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        file_handler = RotatingFileHandler(
+            log_path,
+            maxBytes=10*1024*1024,
+            backupCount=5,
+            encoding='utf-8'
+        )
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s | %(levelname)-8s | %(name)s | %(funcName)s:%(lineno)d | %(message)s'
+        ))
+        logger.addHandler(file_handler)
+    
+    return logger
 
 
 class Logger:
-    """Logger personalizado para PatCode"""
+    """Logger personalizado para PatCode (legacy)"""
     
     def __init__(self, name="PatCode", log_dir="logs", log_level=logging.INFO):
         """
@@ -22,39 +87,10 @@ class Logger:
         """
         self.name = name
         self.log_dir = log_dir
-        self.logger = logging.getLogger(name)
-        self.logger.setLevel(log_level)
-        
-        # Crear directorio de logs si no existe
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        
-        # Configurar handlers
-        self._setup_handlers()
+        self.logger = setup_logger(name)
     
     def _setup_handlers(self):
-        """Configura los handlers de archivo y consola"""
-        # Handler de archivo
-        log_file = os.path.join(
-            self.log_dir,
-            f"patcode_{datetime.now().strftime('%Y%m%d')}.log"
-        )
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
-        file_handler.setLevel(logging.DEBUG)
-        file_formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        file_handler.setFormatter(file_formatter)
-        
-        # Handler de consola
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        console_formatter = logging.Formatter('%(message)s')
-        console_handler.setFormatter(console_formatter)
-        
-        # Agregar handlers
-        self.logger.addHandler(file_handler)
-        self.logger.addHandler(console_handler)
+        pass
     
     def debug(self, message):
         """Log de debug"""

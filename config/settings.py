@@ -8,6 +8,11 @@ import os
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde .env
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # ============================================================================
 # RUTAS DEL PROYECTO
@@ -206,6 +211,31 @@ class RAGSettings:
 
 
 @dataclass
+class LLMSettings:
+    """Configuración del sistema híbrido de LLM providers"""
+    default_provider: str = os.getenv("LLM_DEFAULT_PROVIDER", "groq")
+    auto_fallback: bool = os.getenv("LLM_AUTO_FALLBACK", "true").lower() == "true"
+    fallback_order: List[str] = field(default_factory=lambda: 
+        os.getenv("LLM_FALLBACK_ORDER", "groq,ollama").split(",")
+    )
+    
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+    groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
+    groq_timeout: int = int(os.getenv("GROQ_TIMEOUT", "30"))
+    
+    ollama_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    ollama_model: str = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:1.5b")
+    ollama_timeout: int = int(os.getenv("OLLAMA_TIMEOUT", "30"))
+    
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    openai_timeout: int = int(os.getenv("OPENAI_TIMEOUT", "30"))
+    
+    temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+    max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+
+
+@dataclass
 class UISettings:
     """Configuración de interfaz de usuario"""
     terminal_width: int = int(os.getenv("TERMINAL_WIDTH", "80"))
@@ -245,6 +275,7 @@ class Settings:
     - settings.analysis.enable_cache
     - settings.rag.enabled
     - settings.ui.enable_colors
+    - settings.llm.default_provider
     """
     ollama: OllamaSettings = field(default_factory=OllamaSettings)
     memory: MemorySettings = field(default_factory=MemorySettings)
@@ -257,6 +288,7 @@ class Settings:
     rag: RAGSettings = field(default_factory=RAGSettings)
     ui: UISettings = field(default_factory=UISettings)
     cli: CLISettings = field(default_factory=CLISettings)
+    llm: LLMSettings = field(default_factory=LLMSettings)
 
 
 # ============================================================================

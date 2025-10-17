@@ -33,6 +33,7 @@ from rag.embeddings import EmbeddingGenerator
 from rag.vector_store import VectorStore
 from rag.code_indexer import CodeIndexer
 from rag.retriever import ContextRetriever
+from agents.llm_manager import LLMManager
 
 logger = setup_logger(__name__)
 
@@ -66,6 +67,8 @@ class PatAgent:
         self.ollama_url: str = f"{settings.ollama.base_url}/api/generate"
         self.model: str = settings.ollama.model
         self.timeout: int = settings.ollama.timeout
+        
+        self.llm_manager = LLMManager(settings.llm)
         
         # Inicializar FileManager
         self.file_manager = FileManager()
@@ -127,6 +130,7 @@ class PatAgent:
         
         logger.info(
             f"PatAgent inicializado | "
+            f"LLM Provider: {self.llm_manager.get_current_provider()} | "
             f"Modelo: {self.model} | "
             f"Mensajes activos: {len(self.memory_manager.active_memory)} | "
             f"Archivos en contexto: {len(self.file_manager.loaded_files)}"
@@ -205,6 +209,9 @@ class PatAgent:
             context += "\n"
         
         return context
+    
+    def _get_response(self, messages: List[Dict]) -> str:
+        return self.llm_manager.generate(messages)
     
     @retry_with_backoff(
         max_attempts=3,
@@ -458,8 +465,16 @@ class PatAgent:
             
             full_prompt = f"{context}\n{rag_context}\n{files_content}\nUsuario: {validated_prompt}\nPat:"
             
-            # 4. Llamar a Ollama
-            answer = self._call_ollama(full_prompt)
+            messages = [
+                {"role": "system", "content": context},
+                {"role": "user", "content": f"{rag_context}\n{files_content}\n{validated_prompt}"}
+            ]
+            
+            try:
+                answer = self._get_response(messages)
+            except Exception as llm_error:
+                logger.warning(f"LLM Manager falló, usando fallback a Ollama directo: {llm_error}")
+                answer = self._call_ollama(full_prompt)
             
             # 5. Agregar respuesta al historial usando MemoryManager
             self.memory_manager.add_message("assistant", answer)

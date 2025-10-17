@@ -215,6 +215,15 @@ class CommandRegistry:
             requires_args=True,
             category="rag"
         ))
+        
+        self.register(Command(
+            name="llm",
+            handler=lambda ctx, args: self._handle_llm(ctx, args),
+            description="Gestión de providers LLM",
+            usage="/llm <providers|switch|stats|test> [args]",
+            requires_args=True,
+            category="llm"
+        ))
     
     def _handle_clear(self, ctx) -> str:
         if hasattr(ctx, 'clear_history'):
@@ -389,6 +398,90 @@ class CommandRegistry:
             return '\n'.join(output)
         except Exception as e:
             return f"❌ Error: {str(e)}"
+    
+    def _handle_llm(self, ctx, args: str) -> str:
+        if not hasattr(ctx, 'llm_manager'):
+            return "❌ LLM Manager no disponible"
+        
+        parts = args.split(maxsplit=1)
+        subcmd = parts[0].lower()
+        subcmd_args = parts[1] if len(parts) > 1 else ""
+        
+        llm_manager = ctx.llm_manager
+        
+        if subcmd == "providers":
+            available = llm_manager.get_available_providers()
+            current = llm_manager.get_current_provider()
+            all_providers = list(llm_manager.adapters.keys())
+            
+            output = ["🤖 LLM Providers:\n"]
+            for provider in all_providers:
+                status = "✅" if provider in available else "❌"
+                current_marker = " ⬅ ACTUAL" if provider == current else ""
+                output.append(f"  {status} {provider}{current_marker}")
+            
+            output.append(f"\n💡 Auto-fallback: {'✅ Activado' if llm_manager.config.auto_fallback else '❌ Desactivado'}")
+            output.append(f"📋 Orden de fallback: {', '.join(llm_manager.config.fallback_order)}")
+            
+            return '\n'.join(output)
+        
+        elif subcmd == "switch":
+            if not subcmd_args:
+                return "❌ Uso: /llm switch <provider>\nProviders disponibles: " + ', '.join(llm_manager.adapters.keys())
+            
+            provider = subcmd_args.strip()
+            success = llm_manager.switch_provider(provider)
+            
+            if success:
+                return f"✅ Provider cambiado a: {provider}"
+            else:
+                return f"❌ No se pudo cambiar a '{provider}'. Verifica que esté disponible con /llm providers"
+        
+        elif subcmd == "stats":
+            stats = llm_manager.get_stats()
+            
+            output = [
+                f"📊 Estadísticas LLM:\n",
+                f"  Provider actual: {stats['current_provider']}",
+                f"  Providers disponibles: {', '.join(stats['available_providers'])}",
+                f"  Auto-fallback: {'✅' if stats['auto_fallback'] else '❌'}",
+                f"\n📈 Por Provider:"
+            ]
+            
+            for provider, pstats in stats['provider_stats'].items():
+                output.append(f"\n  {provider.upper()}:")
+                output.append(f"    - Requests: {pstats['total_requests']}")
+                output.append(f"    - Exitosos: {pstats['successful_requests']}")
+                output.append(f"    - Fallidos: {pstats['failed_requests']}")
+                output.append(f"    - Tasa de éxito: {pstats['success_rate']:.1%}")
+                if pstats['average_response_time'] > 0:
+                    output.append(f"    - Tiempo promedio: {pstats['average_response_time']:.2f}s")
+            
+            return '\n'.join(output)
+        
+        elif subcmd == "test":
+            provider = subcmd_args.strip() if subcmd_args else llm_manager.get_current_provider()
+            
+            output = [f"🧪 Probando provider: {provider}...\n"]
+            
+            result = llm_manager.test_provider(provider)
+            
+            if result['available']:
+                output.append(f"✅ {provider} está disponible")
+                if 'test_success' in result:
+                    if result['test_success']:
+                        output.append(f"✅ Test de generación exitoso ({result['test_response_length']} chars)")
+                    else:
+                        output.append(f"❌ Test de generación falló: {result.get('test_error', 'Unknown')}")
+            else:
+                output.append(f"❌ {provider} NO está disponible")
+                if 'error' in result:
+                    output.append(f"   Error: {result['error']}")
+            
+            return '\n'.join(output)
+        
+        else:
+            return f"❌ Subcomando desconocido: {subcmd}\nDisponibles: providers, switch, stats, test"
 
 
 command_registry = CommandRegistry()

@@ -33,7 +33,7 @@ class ResponseCache:
                 {'role': m.get('role'), 'content': m.get('content')[:200]}
                 for m in messages[-5:]
             ],
-            'files': sorted([f.name for f in files_context])
+            'files': sorted([str(f) for f in files_context])
         }
         
         context_str = json.dumps(context, sort_keys=True)

@@ -5,6 +5,10 @@
 # HTTP requests para comunicación con Ollama
 requests>=2.31.0,<3.0.0
 
+# LLM Providers
+groq>=0.4.0  # Groq API client
+openai>=1.0.0  # OpenAI API client (opcional)
+
 # Variables de entorno (.env)
 python-dotenv>=1.0.0,<2.0.0
 
@@ -30,7 +34,6 @@ psutil>=5.9.0,<6.0.0
 # ================================
 
 # Code analysis y formateo
- sast-comments>=1.2.2       # AST parsing con comentarios
  autopep8>=2.0.4           # Auto formateo de código Python
  pylint>=3.0.3             # Análisis estático de código
 

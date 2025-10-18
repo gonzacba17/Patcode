@@ -1,0 +1,40 @@
+llm:
+  providers:
+    ollama:
+      enabled: true
+      model: "llama3.2"
+      base_url: "http://localhost:11434"
+      timeout: 300
+      temperature: 0.7
+      max_tokens: 4096
+    
+    groq:
+      enabled: true
+      model: "llama-3.1-70b-versatile"
+      api_key: "${GROQ_API_KEY}"
+      timeout: 60
+      temperature: 0.7
+      max_tokens: 4096
+    
+    together:
+      enabled: false
+      model: "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+      api_key: "${TOGETHER_API_KEY}"
+      timeout: 60
+      temperature: 0.7
+      max_tokens: 4096
+  
+  strategies:
+    simple:
+      - ollama
+    complex:
+      - groq
+      - ollama
+    code_generation:
+      - groq
+      - ollama
+
+shell:
+  timeout: 300
+  allow_shell: false
+  working_dir: "."

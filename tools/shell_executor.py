@@ -1,222 +1,267 @@
 """
-Ejecutor de comandos shell con sandbox y validaciones de seguridad.
-"""
-import subprocess
-import shlex
-import time
-from typing import Tuple, Optional, List, Dict
-from pathlib import Path
-from datetime import datetime
-from tools.safety_checker import SafetyChecker
-from utils.logger import setup_logger
+Shell Executor - FASE 2: Sistema Multi-LLM y Shell Executor
 
-logger = setup_logger(__name__)
+Ejecutor de comandos shell con seguridad, whitelist y logging.
+"""
+
+import subprocess
+import os
+import time
+import logging
+from typing import Dict, Any, List, Optional, Tuple
+from dataclasses import dataclass
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CommandResult:
+    """Resultado de ejecutar un comando."""
+    success: bool
+    stdout: str
+    stderr: str
+    exit_code: int
+    command: str
+    duration: float
 
 
 class ShellExecutor:
     """
-    Ejecuta comandos shell de forma segura con validaciones,
-    timeouts y registro de historial.
+    Tool para ejecutar comandos de shell de forma segura.
+    
+    Características:
+    - Whitelist de comandos permitidos
+    - Timeout para prevenir comandos colgados
+    - Captura de stdout/stderr
+    - Working directory configurable
+    - Logging de todos los comandos ejecutados
     """
     
-    def __init__(self, auto_approve: bool = False):
+    ALLOWED_COMMANDS = {
+        "pytest", "npm", "yarn", "jest", "vitest", "cargo",
+        "pip", "poetry", "pipenv", "pnpm",
+        "git",
+        "make", "cmake", "mvn", "gradle",
+        "black", "flake8", "mypy", "eslint", "prettier", "ruff",
+        "node", "python", "python3",
+        "docker", "docker-compose",
+        "ls", "cat", "grep", "find", "tree", "pwd", "echo"
+    }
+    
+    DANGEROUS_COMMANDS = {
+        "rm", "rmdir", "del", "format", "dd", "mkfs",
+        "shutdown", "reboot", "kill", "killall",
+        "chmod", "chown", "sudo", "su",
+        "curl", "wget"
+    }
+    
+    def __init__(
+        self,
+        working_dir: str = ".",
+        timeout: int = 300,
+        allow_shell: bool = False
+    ):
         """
-        Inicializa el ejecutor de comandos.
+        Inicializa el ejecutor de shell.
         
         Args:
-            auto_approve: Si True, no pide confirmación (solo para tests)
+            working_dir: Directorio de trabajo
+            timeout: Timeout default en segundos
+            allow_shell: Permitir shell=True (peligroso)
         """
-        self.safety_checker = SafetyChecker()
-        self.auto_approve = auto_approve
-        self.execution_history: List[Dict] = []
-        logger.info(f"ShellExecutor inicializado (auto_approve={auto_approve})")
+        self.working_dir = os.path.abspath(working_dir)
+        self.timeout = timeout
+        self.allow_shell = allow_shell
+        self.command_history: List[Dict[str, Any]] = []
+        
+        logger.info(f"ShellExecutor initialized: {self.working_dir}")
     
     def execute(
         self,
         command: str,
-        cwd: Optional[Path] = None,
-        timeout: int = 30,
-        capture_output: bool = True
-    ) -> Tuple[bool, str, str]:
+        timeout: Optional[int] = None,
+        env: Optional[Dict[str, str]] = None
+    ) -> CommandResult:
         """
-        Ejecuta un comando shell con validaciones.
+        Ejecuta un comando de shell.
         
         Args:
-            command: Comando a ejecutar
-            cwd: Directorio de trabajo (None = directorio actual)
-            timeout: Timeout en segundos
-            capture_output: Si capturar stdout/stderr
-        
+            command: Comando a ejecutar (ej: "pytest tests/")
+            timeout: Timeout en segundos (usa self.timeout si es None)
+            env: Variables de entorno adicionales
+            
         Returns:
-            Tupla (success, stdout, stderr)
+            CommandResult con el resultado
+            
+        Raises:
+            ValueError: Si el comando no está permitido
+            subprocess.TimeoutExpired: Si el comando excede el timeout
         """
+        parts = command.split()
+        base_command = parts[0] if parts else ""
+        
+        if base_command in self.DANGEROUS_COMMANDS:
+            raise ValueError(f"❌ Dangerous command not allowed: {base_command}")
+        
+        if base_command not in self.ALLOWED_COMMANDS:
+            raise ValueError(
+                f"❌ Command not allowed: {base_command}\n"
+                f"Allowed commands: {', '.join(sorted(self.ALLOWED_COMMANDS))}"
+            )
+        
+        exec_env = os.environ.copy()
+        if env:
+            exec_env.update(env)
+        
+        exec_timeout = timeout or self.timeout
+        
+        logger.info(f"🔧 Executing: {command}")
+        logger.info(f"📁 Working dir: {self.working_dir}")
+        
         start_time = time.time()
         
-        is_safe, safety_msg = self.safety_checker.check_command(command)
-        
-        if not is_safe:
-            logger.warning(f"Comando bloqueado: {command[:50]} - {safety_msg}")
-            self._log_execution(command, False, "", safety_msg, 0, cwd)
-            return False, "", f"⚠️  Comando bloqueado: {safety_msg}"
-        
-        if not self.auto_approve and self._requires_confirmation(command):
-            logger.info(f"Comando requiere confirmación: {command}")
-            if not self._ask_confirmation(command):
-                self._log_execution(command, False, "", "Cancelado por usuario", 0, cwd)
-                return False, "", "Comando cancelado por el usuario"
-        
         try:
-            logger.info(f"Ejecutando comando: {command}")
-            
-            if cwd:
-                cwd = Path(cwd).resolve()
-            
             result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=capture_output,
+                parts,
+                cwd=self.working_dir,
+                capture_output=True,
                 text=True,
-                timeout=timeout,
-                cwd=str(cwd) if cwd else None
+                timeout=exec_timeout,
+                env=exec_env,
+                shell=self.allow_shell
             )
             
             duration = time.time() - start_time
-            success = result.returncode == 0
             
-            stdout = result.stdout if capture_output else ""
-            stderr = result.stderr if capture_output else ""
+            cmd_result = CommandResult(
+                success=result.returncode == 0,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                exit_code=result.returncode,
+                command=command,
+                duration=duration
+            )
             
-            if success:
-                logger.info(f"Comando exitoso ({duration:.2f}s): {command[:50]}")
+            if cmd_result.success:
+                logger.info(f"✅ Command successful ({duration:.2f}s)")
             else:
-                logger.error(f"Comando falló (rc={result.returncode}): {command[:50]}")
+                logger.warning(f"❌ Command failed with code {result.returncode}")
+                if result.stderr:
+                    logger.warning(f"stderr: {result.stderr[:500]}")
             
-            self._log_execution(command, success, stdout, stderr, duration, cwd)
+            self.command_history.append({
+                "command": command,
+                "timestamp": time.time(),
+                "success": cmd_result.success,
+                "duration": duration,
+                "exit_code": result.returncode
+            })
             
-            return success, stdout, stderr
-        
+            return cmd_result
+            
         except subprocess.TimeoutExpired:
             duration = time.time() - start_time
-            error_msg = f"Comando excedió el timeout de {timeout}s"
-            logger.error(f"Timeout: {command[:50]}")
-            self._log_execution(command, False, "", error_msg, duration, cwd)
-            return False, "", f"⏱️  {error_msg}"
+            logger.error(f"⏱️ Command timeout after {exec_timeout}s")
+            raise
         
         except Exception as e:
-            duration = time.time() - start_time
-            error_msg = f"Error al ejecutar comando: {str(e)}"
-            logger.exception(f"Error ejecutando: {command[:50]}")
-            self._log_execution(command, False, "", error_msg, duration, cwd)
-            return False, "", f"❌ {error_msg}"
+            logger.error(f"💥 Error executing command: {e}")
+            raise
     
-    def _requires_confirmation(self, command: str) -> bool:
-        """
-        Determina si un comando requiere confirmación del usuario.
-        
-        Args:
-            command: Comando a evaluar
-        
-        Returns:
-            True si requiere confirmación
-        """
-        destructive_keywords = ['rm', 'delete', 'drop', 'truncate', 'format']
-        write_keywords = ['>', '>>', 'tee']
-        
-        command_lower = command.lower()
-        
-        for keyword in destructive_keywords + write_keywords:
-            if keyword in command_lower:
-                return True
-        
-        return False
-    
-    def _ask_confirmation(self, command: str) -> bool:
-        """
-        Pide confirmación al usuario para ejecutar un comando.
-        
-        Args:
-            command: Comando a confirmar
-        
-        Returns:
-            True si el usuario confirma
-        """
-        print(f"\n⚠️  Comando potencialmente destructivo")
-        print(f"Comando: {command}")
-        response = input("¿Ejecutar este comando? (s/N): ").strip().lower()
-        
-        confirmed = response in ['s', 'si', 'sí', 'y', 'yes']
-        
-        if confirmed:
-            self.safety_checker.add_approved_command(command)
-        
-        return confirmed
-    
-    def _log_execution(
+    def execute_multiple(
         self,
-        command: str,
-        success: bool,
-        stdout: str,
-        stderr: str,
-        duration: float,
-        cwd: Optional[Path]
-    ) -> None:
+        commands: List[str],
+        stop_on_error: bool = True
+    ) -> List[CommandResult]:
         """
-        Registra una ejecución en el historial.
+        Ejecuta múltiples comandos en secuencia.
         
         Args:
-            command: Comando ejecutado
-            success: Si fue exitoso
-            stdout: Salida estándar
-            stderr: Salida de error
-            duration: Duración en segundos
-            cwd: Directorio de trabajo
-        """
-        entry = {
-            'timestamp': datetime.now().isoformat(),
-            'command': command,
-            'success': success,
-            'stdout': stdout[:500] if stdout else "",
-            'stderr': stderr[:500] if stderr else "",
-            'duration': duration,
-            'cwd': str(cwd) if cwd else str(Path.cwd())
-        }
-        
-        self.execution_history.append(entry)
-        
-        if len(self.execution_history) > 100:
-            self.execution_history = self.execution_history[-100:]
-    
-    def get_history(self, limit: int = 10) -> List[Dict]:
-        """
-        Obtiene el historial de ejecuciones.
-        
-        Args:
-            limit: Número máximo de entradas
-        
+            commands: Lista de comandos a ejecutar
+            stop_on_error: Si True, detiene en el primer error
+            
         Returns:
-            Lista de ejecuciones (más recientes primero)
+            Lista de CommandResult
         """
-        return list(reversed(self.execution_history[-limit:]))
+        results = []
+        
+        for cmd in commands:
+            try:
+                result = self.execute(cmd)
+                results.append(result)
+                
+                if not result.success and stop_on_error:
+                    logger.warning(f"⏹️ Stopping execution due to error in: {cmd}")
+                    break
+                    
+            except Exception as e:
+                logger.error(f"Error in command '{cmd}': {e}")
+                if stop_on_error:
+                    break
+        
+        return results
+    
+    def can_execute(self, command: str) -> Tuple[bool, str]:
+        """
+        Verifica si un comando se puede ejecutar.
+        
+        Args:
+            command: Comando a verificar
+            
+        Returns:
+            (can_execute: bool, reason: str)
+        """
+        parts = command.split()
+        if not parts:
+            return False, "Empty command"
+        
+        base_command = parts[0]
+        
+        if base_command in self.DANGEROUS_COMMANDS:
+            return False, f"Dangerous command: {base_command}"
+        
+        if base_command not in self.ALLOWED_COMMANDS:
+            return False, f"Command not in whitelist: {base_command}"
+        
+        return True, "OK"
+    
+    def get_command_history(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Retorna los últimos N comandos ejecutados.
+        
+        Args:
+            limit: Número de comandos a retornar
+            
+        Returns:
+            Lista de diccionarios con info de comandos
+        """
+        return self.command_history[-limit:]
     
     def clear_history(self) -> None:
-        """Limpia el historial de ejecuciones"""
-        self.execution_history.clear()
-        logger.info("Historial de ejecuciones limpiado")
+        """Limpia el historial de comandos."""
+        self.command_history.clear()
+        logger.info("Command history cleared")
     
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> Dict[str, Any]:
         """
-        Obtiene estadísticas de ejecuciones.
+        Obtiene estadísticas de ejecución.
         
         Returns:
-            Diccionario con estadísticas
+            Dict con estadísticas
         """
-        total = len(self.execution_history)
-        successful = sum(1 for e in self.execution_history if e['success'])
+        total = len(self.command_history)
+        successful = sum(1 for cmd in self.command_history if cmd["success"])
         failed = total - successful
         
+        avg_duration = 0.0
+        if total > 0:
+            avg_duration = sum(cmd["duration"] for cmd in self.command_history) / total
+        
         return {
-            'total_executions': total,
-            'successful': successful,
-            'failed': failed,
-            'safety_stats': self.safety_checker.get_stats()
+            "total_commands": total,
+            "successful": successful,
+            "failed": failed,
+            "success_rate": successful / total if total > 0 else 0,
+            "avg_duration_seconds": avg_duration
         }

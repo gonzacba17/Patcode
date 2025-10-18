@@ -4,6 +4,8 @@ Herramientas para ejecutar comandos y buscar archivos
 """
 
 import subprocess
+import shlex
+import re
 from pathlib import Path
 from typing import Dict, Any, List
 
@@ -43,7 +45,7 @@ class ExecuteCommandTool:
     
     def execute(self, command: str, timeout: int = 30, **kwargs) -> Dict[str, Any]:
         """
-        Ejecuta un comando de shell
+        Ejecuta un comando de shell de forma segura (sin shell=True)
         
         Args:
             command: Comando a ejecutar
@@ -53,26 +55,38 @@ class ExecuteCommandTool:
             Dict con success, result o error
         """
         try:
-            cmd_parts = command.strip().split()
-            if not cmd_parts:
+            if not command or not command.strip():
                 return {
                     "success": False,
                     "error": "Comando vacío"
                 }
             
+            sanitized_command = self._sanitize_command(command.strip())
+            cmd_parts = shlex.split(sanitized_command)
+            
+            if not cmd_parts:
+                return {
+                    "success": False,
+                    "error": "Comando inválido después de sanitización"
+                }
+            
             base_cmd = cmd_parts[0]
             
-            # Verificar si está permitido
             if not self._is_allowed(base_cmd):
                 return {
                     "success": False,
                     "error": f"Comando no permitido: {base_cmd}"
                 }
             
-            # Ejecutar comando
+            if self._is_dangerous_pattern(sanitized_command):
+                return {
+                    "success": False,
+                    "error": "Comando contiene patrones peligrosos"
+                }
+            
             result = subprocess.run(
-                command,
-                shell=True,
+                cmd_parts,
+                shell=False,
                 cwd=str(self.workspace_root),
                 capture_output=True,
                 text=True,
@@ -82,7 +96,7 @@ class ExecuteCommandTool:
             return {
                 "success": result.returncode == 0,
                 "result": {
-                    "command": command,
+                    "command": sanitized_command,
                     "return_code": result.returncode,
                     "stdout": result.stdout,
                     "stderr": result.stderr
@@ -104,6 +118,34 @@ class ExecuteCommandTool:
         """Verifica si el comando está permitido"""
         return any(command.startswith(allowed) or command == allowed 
                   for allowed in self.allowed_commands)
+    
+    def _sanitize_command(self, command: str) -> str:
+        """Sanitiza el comando removiendo caracteres peligrosos"""
+        dangerous_chars = [';', '|', '&', '$', '`', '>', '<', '\n', '\r']
+        sanitized = command
+        for char in dangerous_chars:
+            if char in sanitized:
+                sanitized = sanitized.replace(char, '')
+        return sanitized
+    
+    def _is_dangerous_pattern(self, command: str) -> bool:
+        """Detecta patrones peligrosos en comandos"""
+        dangerous_patterns = [
+            r'rm\s+-rf\s+/',
+            r'\bdd\b',
+            r'\bmkfs\b',
+            r'\bformat\b',
+            r'chmod\s+777',
+            r'sudo\s+',
+            r'curl.*\|.*sh',
+            r'wget.*\|.*sh',
+            r':.*{.*:.*&.*}.*:',
+        ]
+        
+        for pattern in dangerous_patterns:
+            if re.search(pattern, command, re.IGNORECASE):
+                return True
+        return False
 
 
 class SearchFilesTool:

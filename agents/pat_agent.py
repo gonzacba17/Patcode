@@ -166,20 +166,24 @@ class PatAgent:
             logger.error(f"Error al guardar historial: {e}")
             raise MemoryWriteError(f"No se pudo guardar la memoria: {e}")
     
-    def _build_context(self) -> str:
+    def _build_context(self, max_tokens: int = 4000) -> str:
         """
-        Construye el contexto para el LLM basado en el historial reciente y archivos cargados.
+        Construye el contexto para el LLM con límite de tokens.
         
-        Usa solo los últimos N mensajes según CONTEXT_WINDOW_SIZE
-        para no sobrecargar el contexto del modelo.
+        Prioridad: system prompt > archivos > RAG > memoria conversacional
+        Usa conteo aproximado: 1 token ≈ 4 caracteres
+        
+        Args:
+            max_tokens: Límite máximo de tokens (default: 4000)
         
         Returns:
-            String con el contexto formateado para el LLM
+            String con el contexto formateado y acotado
         """
-        full_context = self.memory_manager.get_full_context()
+        parts = []
+        total_chars = 0
+        max_chars = max_tokens * 4
         
-        # System prompt base
-        context = (
+        system_prompt = (
             "Eres Pat, un asistente de programación experto y amigable.\n"
             "Ayudas a los desarrolladores con:\n"
             "- Explicaciones claras de conceptos\n"
@@ -188,27 +192,52 @@ class PatAgent:
             "- Mejores prácticas y patrones\n"
             "- Análisis y revisión de código\n\n"
         )
+        parts.append(system_prompt)
+        total_chars += len(system_prompt)
         
-        # Agregar información de archivos cargados si existen
-        if self.file_manager.loaded_files:
-            context += "ARCHIVOS DEL PROYECTO DISPONIBLES:\n"
+        if self.file_manager.loaded_files and total_chars < max_chars:
+            files_context = "ARCHIVOS DEL PROYECTO DISPONIBLES:\n"
             for file_path, loaded_file in self.file_manager.loaded_files.items():
                 lines = len(loaded_file.content.splitlines())
-                context += f"- {loaded_file.path.name} ({lines} líneas)\n"
-            context += "\nPuedes analizar estos archivos cuando el usuario lo pida.\n\n"
+                file_info = f"- {loaded_file.path.name} ({lines} líneas)\n"
+                
+                if total_chars + len(file_info) < max_chars:
+                    files_context += file_info
+                    total_chars += len(file_info)
+                else:
+                    break
+            
+            files_context += "\nPuedes analizar estos archivos cuando el usuario lo pida.\n\n"
+            parts.append(files_context)
+            total_chars += len(files_context)
         
-        # Agregar contexto completo (pasivo + activo)
-        if full_context:
-            context += "Conversación reciente:\n"
-            for msg in full_context:
+        full_context = self.memory_manager.get_full_context()
+        if full_context and total_chars < max_chars:
+            conv_context = "Conversación reciente:\n"
+            for msg in reversed(full_context):
                 role_display = "Usuario" if msg["role"] == "user" else "Pat"
                 if msg["role"] == "system":
-                    context += f"{msg['content']}\n"
+                    msg_text = f"{msg['content']}\n"
                 else:
-                    context += f"{role_display}: {msg['content']}\n"
-            context += "\n"
+                    msg_text = f"{role_display}: {msg['content']}\n"
+                
+                if total_chars + len(msg_text) < max_chars:
+                    conv_context = msg_text + conv_context
+                    total_chars += len(msg_text)
+                else:
+                    conv_context = "[... conversación truncada ...]\n" + conv_context
+                    break
+            
+            parts.append(conv_context)
         
-        return context
+        final_context = "".join(parts)
+        
+        if len(final_context) > max_chars:
+            logger.warning(f"Contexto truncado: {len(final_context)} chars > {max_chars} límite")
+            final_context = final_context[:max_chars] + "\n[... contexto truncado por límite de tokens ...]"
+        
+        logger.debug(f"Contexto construido: ~{len(final_context) // 4} tokens estimados")
+        return final_context
     
     def _get_response(self, messages: List[Dict]) -> str:
         return self.llm_manager.generate(messages)

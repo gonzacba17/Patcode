@@ -1,14 +1,64 @@
 import os
-from typing import Dict, List, Generator, Optional
+import time
+from typing import Dict, List, Generator, Optional, Callable, Any
 from datetime import datetime, timedelta
+from functools import wraps
 
 from agents.llm_adapters.base_adapter import BaseLLMAdapter
 from agents.llm_adapters.ollama_adapter import OllamaAdapter
 from agents.llm_adapters.groq_adapter import GroqAdapter
 from agents.llm_adapters.openai_adapter import OpenAIAdapter
 from utils.logger import setup_logger
+from exceptions import LLMRateLimitError
+
+try:
+    from utils.telemetry import get_telemetry
+    TELEMETRY_AVAILABLE = True
+except ImportError:
+    TELEMETRY_AVAILABLE = False
 
 logger = setup_logger(__name__)
+
+
+class RateLimiter:
+    """
+    Decorador para limitar la tasa de llamadas a funciones.
+    
+    Attributes:
+        max_calls: Número máximo de llamadas permitidas
+        period: Periodo de tiempo en segundos
+    """
+    
+    def __init__(self, max_calls: int = 20, period: int = 60):
+        self.max_calls = max_calls
+        self.period = period
+        self.calls: List[float] = []
+    
+    def __call__(self, func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> Any:
+            now = time.time()
+            
+            self.calls = [call_time for call_time in self.calls 
+                         if now - call_time < self.period]
+            
+            if len(self.calls) >= self.max_calls:
+                wait_time = self.period - (now - self.calls[0])
+                logger.warning(
+                    f"Rate limit alcanzado: {len(self.calls)}/{self.max_calls} "
+                    f"llamadas en {self.period}s. Espera requerida: {wait_time:.1f}s"
+                )
+                raise LLMRateLimitError(
+                    f"Rate limit excedido. Máximo {self.max_calls} llamadas "
+                    f"por {self.period}s. Espera {wait_time:.1f}s"
+                )
+            
+            self.calls.append(now)
+            logger.debug(f"Rate limiter: {len(self.calls)}/{self.max_calls} llamadas")
+            
+            return func(*args, **kwargs)
+        
+        return wrapper
 
 
 class LLMManager:
@@ -19,6 +69,7 @@ class LLMManager:
         self.current_provider: Optional[str] = None
         self.availability_cache: Dict[str, tuple[bool, datetime]] = {}
         self.cache_ttl = 60
+        self.rate_limiter = RateLimiter(max_calls=20, period=60)
         
         self._initialize_adapters()
         self._select_initial_provider()
@@ -114,6 +165,7 @@ class LLMManager:
         logger.error("No hay providers de fallback disponibles")
         return None
     
+    @RateLimiter(max_calls=20, period=60)
     def generate(self, messages: List[Dict], **kwargs) -> str:
         if not self.current_provider:
             raise RuntimeError(
@@ -123,10 +175,27 @@ class LLMManager:
         
         adapter = self.adapters[self.current_provider]
         
-        try:
-            logger.debug(f"Generando respuesta con {self.current_provider}...")
-            response = adapter.generate(messages, **kwargs)
-            return response
+        if TELEMETRY_AVAILABLE:
+            telemetry = get_telemetry()
+            with telemetry.trace_operation("llm.generate", {
+                "provider": self.current_provider,
+                "messages_count": len(messages)
+            }):
+                try:
+                    logger.debug(f"Generando respuesta con {self.current_provider}...")
+                    response = adapter.generate(messages, **kwargs)
+                    telemetry.record_request("generate", "success")
+                    return response
+                except Exception as e:
+                    telemetry.record_request("generate", "error")
+                    raise
+        else:
+            try:
+                logger.debug(f"Generando respuesta con {self.current_provider}...")
+                response = adapter.generate(messages, **kwargs)
+                return response
+            except Exception:
+                raise
             
         except Exception as e:
             error_msg = str(e)

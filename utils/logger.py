@@ -1,11 +1,14 @@
 """
-Sistema de logging profesional con colores y rotación de archivos.
+Sistema de logging profesional con colores, rotación de archivos y logs estructurados.
 """
 
 import logging
 import sys
+import json
 from pathlib import Path
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
+from typing import Dict, Any
 from config.settings import settings
 
 
@@ -27,12 +30,36 @@ class ColoredFormatter(logging.Formatter):
         return super().format(record)
 
 
-def setup_logger(name: str) -> logging.Logger:
+class StructuredFormatter(logging.Formatter):
+    """Formatter para logs estructurados en JSON"""
+    
+    def format(self, record: logging.LogRecord) -> str:
+        log_data = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'level': record.levelname,
+            'logger': record.name,
+            'message': record.getMessage(),
+            'function': record.funcName,
+            'line': record.lineno,
+            'module': record.module
+        }
+        
+        if hasattr(record, 'extra_data'):
+            log_data['extra'] = record.extra_data
+        
+        if record.exc_info:
+            log_data['exception'] = self.formatException(record.exc_info)
+        
+        return json.dumps(log_data)
+
+
+def setup_logger(name: str, structured: bool = False) -> logging.Logger:
     """
-    Configura logger con salida a consola (colores) y archivo (rotación).
+    Configura logger con salida a consola (colores), archivo (rotación) y logs estructurados.
     
     Args:
         name: Nombre del logger (usa __name__)
+        structured: Si True, usa logs estructurados en JSON para archivo
     
     Returns:
         Logger configurado
@@ -44,7 +71,6 @@ def setup_logger(name: str) -> logging.Logger:
     
     logger.setLevel(getattr(logging, settings.logging.level))
     
-    # Console handler con colores
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(logging.INFO)
     console.setFormatter(ColoredFormatter(
@@ -53,7 +79,6 @@ def setup_logger(name: str) -> logging.Logger:
     ))
     logger.addHandler(console)
     
-    # File handler con rotación (10MB max, 5 backups)
     if settings.logging.file:
         log_path = Path(settings.logging.filename)
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,12 +90,39 @@ def setup_logger(name: str) -> logging.Logger:
             encoding='utf-8'
         )
         file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s | %(levelname)-8s | %(name)s | %(funcName)s:%(lineno)d | %(message)s'
-        ))
+        
+        if structured:
+            file_handler.setFormatter(StructuredFormatter())
+        else:
+            file_handler.setFormatter(logging.Formatter(
+                '%(asctime)s | %(levelname)-8s | %(name)s | %(funcName)s:%(lineno)d | %(message)s'
+            ))
+        
         logger.addHandler(file_handler)
     
     return logger
+
+
+def log_metric(logger: logging.Logger, metric_name: str, value: Any, metadata: Dict[str, Any] = None):
+    """
+    Log de métrica estructurada.
+    
+    Args:
+        logger: Logger a usar
+        metric_name: Nombre de la métrica
+        value: Valor de la métrica
+        metadata: Metadatos adicionales
+    """
+    extra_data = {
+        'metric': metric_name,
+        'value': value,
+        'timestamp': datetime.utcnow().isoformat()
+    }
+    
+    if metadata:
+        extra_data.update(metadata)
+    
+    logger.info(f"METRIC: {metric_name}={value}", extra={'extra_data': extra_data})
 
 
 class Logger:

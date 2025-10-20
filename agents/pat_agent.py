@@ -55,9 +55,21 @@ class PatAgent:
         file_manager: Gestor de archivos del proyecto
     """
     
-    def __init__(self):
+    def __init__(
+        self,
+        llm_manager: Optional[LLMManager] = None,
+        file_manager: Optional[FileManager] = None,
+        cache: Optional[ResponseCache] = None,
+        model_selector = None
+    ):
         """
-        Inicializa el agente PatCode.
+        Inicializa el agente PatCode con Dependency Injection.
+        
+        Args:
+            llm_manager: Gestor de LLMs (opcional, se crea por defecto)
+            file_manager: Gestor de archivos (opcional, se crea por defecto)
+            cache: Sistema de caché (opcional, se crea por defecto)
+            model_selector: Selector de modelos (opcional, se crea por defecto)
         
         Raises:
             MemoryReadError: Si hay problemas al cargar el historial
@@ -68,19 +80,10 @@ class PatAgent:
         self.model: str = settings.ollama.model
         self.timeout: int = settings.ollama.timeout
         
-        self.llm_manager = LLMManager(settings.llm)
-        
-        # Inicializar FileManager
-        self.file_manager = FileManager()
-        
-        # Sistema de cache
-        self.cache = ResponseCache(
-            cache_dir='.patcode_cache',
-            ttl_hours=24
-        )
-        
-        # Model selector
-        self.model_selector = get_model_selector()
+        self.llm_manager = llm_manager or LLMManager(settings.llm)
+        self.file_manager = file_manager or FileManager()
+        self.cache = cache or ResponseCache(cache_dir='.patcode_cache', ttl_hours=24)
+        self.model_selector = model_selector or get_model_selector()
         
         # Log info del modelo
         model_info = self.model_selector.get_model_info(self.model)
@@ -419,6 +422,119 @@ class PatAgent:
         
         return None
     
+    def _validate_prompt(self, prompt: str) -> str:
+        """
+        Valida el prompt del usuario.
+        
+        Args:
+            prompt: Prompt a validar
+            
+        Returns:
+            Prompt validado
+            
+        Raises:
+            InvalidPromptError: Si el prompt no es válido
+        """
+        try:
+            validated_prompt = InputValidator.validate_prompt(prompt)
+            logger.debug(f"Prompt validado: '{validated_prompt[:50]}...'")
+            return validated_prompt
+        except InvalidPromptError as e:
+            logger.warning(f"Prompt inválido rechazado: {e}")
+            raise
+    
+    def _get_rag_context(self, prompt: str) -> str:
+        """
+        Recupera contexto del sistema RAG.
+        
+        Args:
+            prompt: Prompt del usuario
+            
+        Returns:
+            Contexto RAG o cadena vacía
+        """
+        if not self.retriever:
+            return ""
+        
+        try:
+            rag_context = self.retriever.retrieve_context(prompt, top_k=3)
+            logger.debug(f"Contexto RAG recuperado: {len(rag_context)} chars")
+            return rag_context
+        except Exception as e:
+            logger.warning(f"Error recuperando contexto RAG: {e}")
+            return ""
+    
+    def _get_files_context(self, prompt: str) -> str:
+        """
+        Recupera contenido de archivos relevantes.
+        
+        Args:
+            prompt: Prompt del usuario
+            
+        Returns:
+            Contenido de archivos o cadena vacía
+        """
+        if not self.file_manager.loaded_files:
+            return ""
+        
+        files_content = ""
+        prompt_lower = prompt.lower()
+        
+        for file_path, loaded_file in self.file_manager.loaded_files.items():
+            file_name_lower = loaded_file.path.name.lower()
+            
+            if (file_name_lower in prompt_lower or 
+                any(word in prompt_lower for word in ['analiza', 'analizar', 'revisa', 'revisar', 'código', 'codigo', 'archivo', 'main', 'config'])):
+                
+                if file_name_lower in prompt_lower or 'main.py' in file_name_lower:
+                    files_content += f"\n=== Contenido de {loaded_file.path.name} ===\n"
+                    files_content += loaded_file.content[:5000]
+                    if len(loaded_file.content) > 5000:
+                        files_content += "\n... (archivo truncado por tamaño)"
+                    files_content += "\n\n"
+                    break
+        
+        logger.debug(f"Contexto de archivos: {len(files_content)} chars")
+        return files_content
+    
+    def _call_llm(self, context: str, rag_context: str, files_content: str, prompt: str) -> str:
+        """
+        Llama al LLM para generar respuesta.
+        
+        Args:
+            context: Contexto del sistema
+            rag_context: Contexto RAG
+            files_content: Contenido de archivos
+            prompt: Prompt del usuario
+            
+        Returns:
+            Respuesta generada
+        """
+        messages = [
+            {"role": "system", "content": context},
+            {"role": "user", "content": f"{rag_context}\n{files_content}\n{prompt}"}
+        ]
+        
+        try:
+            logger.debug(f"Llamando a LLM Manager...")
+            answer = self._get_response(messages)
+            return answer
+        except Exception as llm_error:
+            logger.warning(f"LLM Manager falló, usando fallback a Ollama directo: {llm_error}")
+            full_prompt = f"{context}\n{rag_context}\n{files_content}\nUsuario: {prompt}\nPat:"
+            return self._call_ollama(full_prompt)
+    
+    def _save_response(self, answer: str) -> None:
+        """
+        Guarda la respuesta en el historial y persiste.
+        
+        Args:
+            answer: Respuesta generada
+        """
+        self.memory_manager.add_message("assistant", answer)
+        logger.debug(f"Respuesta agregada al historial: '{answer[:50]}...'")
+        self._save_history()
+    
     def ask(self, prompt: str) -> str:
         """
         Procesa una pregunta del usuario y devuelve la respuesta del asistente.
@@ -443,86 +559,34 @@ class PatAgent:
             OllamaTimeoutError: Si Ollama no responde a tiempo
             MemoryWriteError: Si no se puede guardar el historial
         """
-        # Verificar comandos RAG
         if prompt.startswith('!'):
             result = self.process_command(prompt)
             if result:
                 return result
         
-        # 1. Validar input
-        try:
-            validated_prompt = InputValidator.validate_prompt(prompt)
-        except InvalidPromptError as e:
-            logger.warning(f"Prompt inválido rechazado: {e}")
-            raise
+        validated_prompt = self._validate_prompt(prompt)
         
-        # 2. Agregar pregunta al historial usando MemoryManager
         self.memory_manager.add_message("user", validated_prompt)
         logger.debug(f"Pregunta agregada al historial: '{validated_prompt[:50]}...'")
         
         try:
-            # 3. Construir contexto (ahora incluye archivos y RAG)
             context = self._build_context()
+            rag_context = self._get_rag_context(validated_prompt)
+            files_content = self._get_files_context(validated_prompt)
             
-            # Recuperar contexto RAG si está disponible
-            rag_context = ""
-            if self.retriever:
-                try:
-                    rag_context = self.retriever.retrieve_context(validated_prompt, top_k=3)
-                except Exception as e:
-                    logger.warning(f"Error recuperando contexto RAG: {e}")
+            answer = self._call_llm(context, rag_context, files_content, validated_prompt)
             
-            # Si hay archivos cargados Y el usuario pregunta sobre código específico,
-            # agregar el contenido del archivo relevante
-            files_content = ""
-            if self.file_manager.loaded_files:
-                # Detectar si el usuario menciona un archivo específico
-                prompt_lower = validated_prompt.lower()
-                for file_path, loaded_file in self.file_manager.loaded_files.items():
-                    file_name_lower = loaded_file.path.name.lower()
-                    # Si menciona el archivo o pide analizar/revisar código
-                    if (file_name_lower in prompt_lower or 
-                        any(word in prompt_lower for word in ['analiza', 'analizar', 'revisa', 'revisar', 'código', 'codigo', 'archivo', 'main', 'config'])):
-                        # Solo agregar archivos mencionados o relevantes
-                        if file_name_lower in prompt_lower or 'main.py' in file_name_lower:
-                            files_content += f"\n=== Contenido de {loaded_file.path.name} ===\n"
-                            files_content += loaded_file.content[:5000]  # Limitar a 5000 caracteres
-                            if len(loaded_file.content) > 5000:
-                                files_content += "\n... (archivo truncado por tamaño)"
-                            files_content += "\n\n"
-                            break
-            
-            full_prompt = f"{context}\n{rag_context}\n{files_content}\nUsuario: {validated_prompt}\nPat:"
-            
-            messages = [
-                {"role": "system", "content": context},
-                {"role": "user", "content": f"{rag_context}\n{files_content}\n{validated_prompt}"}
-            ]
-            
-            try:
-                answer = self._get_response(messages)
-            except Exception as llm_error:
-                logger.warning(f"LLM Manager falló, usando fallback a Ollama directo: {llm_error}")
-                answer = self._call_ollama(full_prompt)
-            
-            # 5. Agregar respuesta al historial usando MemoryManager
-            self.memory_manager.add_message("assistant", answer)
-            logger.debug(f"Respuesta agregada al historial: '{answer[:50]}...'")
-            
-            # 6. Guardar memoria
-            self._save_history()
+            self._save_response(answer)
             
             return answer
             
         except (OllamaConnectionError, OllamaTimeoutError, OllamaModelNotFoundError) as e:
-            # Si falla, revertir el último mensaje del usuario
             if self.memory_manager.active_memory:
                 self.memory_manager.active_memory.pop()
             logger.error(f"Error al procesar pregunta, historial revertido: {e}")
             raise
             
         except Exception as e:
-            # Error inesperado
             if self.memory_manager.active_memory:
                 self.memory_manager.active_memory.pop()
             logger.exception("Error inesperado al procesar pregunta")

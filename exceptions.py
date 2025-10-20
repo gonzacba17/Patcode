@@ -57,22 +57,22 @@ class InvalidConfigurationError(ValidationError):
 
 # ==================== Errores de Memoria ====================
 
-class MemoryError(PatCodeError):
+class PatCodeMemoryError(PatCodeError):
     """Excepción base para errores de memoria/persistencia."""
     pass
 
 
-class MemoryReadError(MemoryError):
+class MemoryReadError(PatCodeMemoryError):
     """Error al leer el archivo de memoria."""
     pass
 
 
-class MemoryWriteError(MemoryError):
+class MemoryWriteError(PatCodeMemoryError):
     """Error al escribir en el archivo de memoria."""
     pass
 
 
-class MemoryCorruptedError(MemoryError):
+class MemoryCorruptedError(PatCodeMemoryError):
     """El archivo de memoria está corrupto."""
     pass
 
@@ -81,4 +81,26 @@ class MemoryCorruptedError(MemoryError):
 
 class ConfigurationError(PatCodeError):
     """Error en la configuración del sistema."""
+    pass
+
+
+# ==================== Errores de LLM ====================
+
+class LLMError(PatCodeError):
+    """Excepción base para errores de LLM."""
+    pass
+
+
+class LLMProviderError(LLMError):
+    """Error relacionado con proveedores de LLM."""
+    pass
+
+
+class LLMTimeoutError(LLMError):
+    """Timeout en llamada a LLM."""
+    pass
+
+
+class LLMRateLimitError(LLMError):
+    """Rate limit excedido."""
     pass

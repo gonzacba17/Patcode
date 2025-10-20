@@ -6,10 +6,37 @@ Clase base abstracta para todas las herramientas de PatCode
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 from pathlib import Path
+from dataclasses import dataclass, field
 import json
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ToolResult:
+    """
+    Resultado estándar para todas las herramientas.
+    
+    Attributes:
+        success: Si la operación fue exitosa
+        data: Datos retornados por la herramienta
+        error: Mensaje de error si falló
+        metadata: Información adicional (timestamps, stats, etc.)
+    """
+    success: bool
+    data: Any = None
+    error: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convierte el resultado a diccionario."""
+        return {
+            "success": self.success,
+            "data": self.data,
+            "error": self.error,
+            "metadata": self.metadata
+        }
 
 
 class BaseTool(ABC):

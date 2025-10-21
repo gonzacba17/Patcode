@@ -19,6 +19,9 @@ except ImportError:
     OTEL_AVAILABLE = False
     trace = None
     metrics = None
+    Resource = None
+    TracerProvider = None
+    MeterProvider = None
 
 from utils.logger import setup_logger
 
@@ -79,7 +82,7 @@ class TelemetryManager:
         
         logger.info(f"Telemetría inicializada: {service_name} ({environment})")
     
-    def _setup_tracing(self, resource: Resource):
+    def _setup_tracing(self, resource: 'Resource'):
         """Configura el sistema de tracing."""
         provider = TracerProvider(resource=resource)
         
@@ -95,7 +98,7 @@ class TelemetryManager:
         trace.set_tracer_provider(provider)
         self.tracer = trace.get_tracer(__name__)
     
-    def _setup_metrics(self, resource: Resource):
+    def _setup_metrics(self, resource: 'Resource'):
         """Configura el sistema de métricas."""
         if self.otlp_endpoint:
             exporter = OTLPMetricExporter(endpoint=self.otlp_endpoint, insecure=True)

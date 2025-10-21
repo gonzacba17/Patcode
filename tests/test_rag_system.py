@@ -39,6 +39,7 @@ def retriever(vector_store, embedding_gen):
     return ContextRetriever(vector_store, embedding_gen)
 
 
+@pytest.mark.requires_ollama
 def test_embedding_generation(embedding_gen):
     text = "def hello_world(): return 'Hello'"
     embedding = embedding_gen.generate_embedding(text)

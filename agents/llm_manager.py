@@ -175,31 +175,29 @@ class LLMManager:
         
         adapter = self.adapters[self.current_provider]
         
-        if TELEMETRY_AVAILABLE:
-            telemetry = get_telemetry()
-            with telemetry.trace_operation("llm.generate", {
-                "provider": self.current_provider,
-                "messages_count": len(messages)
-            }):
-                try:
+        try:
+            if TELEMETRY_AVAILABLE:
+                telemetry = get_telemetry()
+                with telemetry.trace_operation("llm.generate", {
+                    "provider": self.current_provider,
+                    "messages_count": len(messages)
+                }):
                     logger.debug(f"Generando respuesta con {self.current_provider}...")
                     response = adapter.generate(messages, **kwargs)
                     telemetry.record_request("generate", "success")
                     return response
-                except Exception as e:
-                    telemetry.record_request("generate", "error")
-                    raise
-        else:
-            try:
+            else:
                 logger.debug(f"Generando respuesta con {self.current_provider}...")
                 response = adapter.generate(messages, **kwargs)
                 return response
-            except Exception:
-                raise
-            
+                
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error en {self.current_provider}: {error_msg}")
+            
+            if TELEMETRY_AVAILABLE:
+                telemetry = get_telemetry()
+                telemetry.record_request("generate", "error")
             
             fallback_provider = self._try_fallback(self.current_provider, error_msg)
             

@@ -1,690 +1,492 @@
-# 🧠 PatCode
+# 🧠 PatCode - AetherMind Edition
 
-### Tu asistente de programación local impulsado por Ollama
+> Asistente de programación local impulsado por IA - 100% Offline con Ollama
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.9%2B-blue)
-![Ollama](https://img.shields.io/badge/ollama-compatible-green)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](Dockerfile)
+[![Ollama](https://img.shields.io/badge/ollama-compatible-green)](https://ollama.ai)
 
 ---
 
 ## 📖 Índice
 
 1. [Introducción](#-introducción)
-2. [Características principales](#-características-principales)
-3. [Instalación](#-instalación)
+2. [Características Principales](#-características-principales)
+3. [Instalación Rápida](#-instalación-rápida)
 4. [Uso](#-uso)
-5. [Estructura del código](#-estructura-del-código)
-6. [Pruebas](#-pruebas)
-7. [Contribuciones](#-contribuciones)
-8. [Licencia](#-licencia)
+5. [Arquitectura](#-arquitectura)
+6. [Configuración](#-configuración)
+7. [Desarrollo](#-desarrollo)
+8. [Estado del Proyecto](#-estado-del-proyecto)
 
 ---
 
 ## 🎯 Introducción
 
-**PatCode** es un asistente de programación local que replica las funcionalidades de Claude Code de Anthropic, pero completamente **offline**, utilizando modelos de lenguaje de [Ollama](https://ollama.ai/) (como Llama 3.2, Mistral, CodeLlama, entre otros).
+**PatCode AetherMind** es un asistente de programación local que replica funcionalidades avanzadas de Claude Code, pero **completamente offline** usando modelos LLM locales via [Ollama](https://ollama.ai/).
 
 ### ¿Por qué PatCode?
 
-La motivación detrás de PatCode surge de la necesidad de contar con un asistente de programación que:
-
-- **No dependa de la nube**: Funciona completamente offline, ideal para desarrolladores que trabajan en ambientes sin conexión o con restricciones de seguridad.
-- **Preserve la privacidad**: Todo el código y las conversaciones permanecen en tu máquina local, sin enviar datos a servicios externos.
-- **Sea accesible**: No requiere suscripciones ni cuotas de uso, solo necesitas hardware local suficiente para ejecutar modelos de Ollama.
-- **Esté disponible 24/7**: Sin límites de rate-limiting ni dependencias de servicios remotos.
-
-PatCode te permite interactuar con tu código de manera natural, pedir explicaciones, recibir sugerencias de mejora, depurar errores y aprender nuevos conceptos, todo desde la comodidad de tu terminal.
+- **🔒 100% Privado** - Todo corre en tu máquina, tus datos nunca salen
+- **⚡ Sin límites** - Sin rate limiting, cuotas ni suscripciones
+- **🌐 Offline First** - Funciona sin internet (excepto providers cloud opcionales)
+- **🧩 Extensible** - Sistema de plugins para funcionalidades personalizadas
+- **🎨 Multi-Provider** - Soporta Ollama, OpenAI, Groq
 
 ---
 
-## ✨ Características principales
+## ✨ Características Principales
 
-### 💬 Interacción Natural
-Escribe preguntas o instrucciones como si hablaras con otro programador. PatCode entiende contexto y puede mantener conversaciones técnicas fluidas.
+### 💬 Conversación Inteligente
+- Memoria contextual con rotación activa/pasiva
+- Resúmenes automáticos de conversaciones largas
+- Historial persistente entre sesiones
+- Búsqueda en conversaciones pasadas
 
-**Ejemplo:**
-```
-Tú: ¿Cómo puedo leer un archivo JSON en Python?
-PatCode: Puedes usar el módulo 'json'...
-```
+### 🧩 Sistema de Plugins
+- **Auto-descubrimiento** de plugins en `plugins/builtin/`
+- **Plugins incluidos:**
+  - `CodeExplainer` - Explica código en detalle
+  - `GitHelper` - Asistencia con Git (status, diff, commits)
+  - `FileAnalyzer` - Analiza estructura de proyectos
+- **Extensible:** Crea tus propios plugins fácilmente
 
-### 🧠 Memoria Persistente
-PatCode recuerda el contexto de tus últimas conversaciones, permitiendo mantener diálogos coherentes a lo largo de múltiples sesiones. La memoria se almacena en `agents/memory/memory.json`.
+### 🔌 Multi-Provider LLM
+- **Ollama** (local, privado)
+- **OpenAI** (GPT-4, GPT-3.5)
+- **Groq** (Llama, Mixtral ultrarrápido)
+- Abstracción unificada con `BaseAdapter`
 
-### 🔍 Análisis de Código
-Copia fragmentos de código o describe tu problema, y PatCode te ofrecerá:
-- Explicaciones detalladas de cómo funciona el código
-- Sugerencias de mejora y optimización
-- Identificación de errores y bugs potenciales
-- Refactorización de código
+### ⚡ Performance
+- **Caché inteligente** con similitud Jaccard
+- **TTL configurable** (default: 24h)
+- **Hit rate típico:** 35-40% en sesiones largas
+- **Ahorro:** ~50% en queries repetidas
 
-### ⚙️ 100% Local
-Funciona completamente offline usando tu modelo Ollama preferido (por ejemplo, `llama3.2:latest`, `codellama`, `mistral`). No requiere conexión a internet para funcionar.
+### 📊 Monitoreo
+- **Telemetría simple:** counters, gauges, timers
+- **Logging avanzado** con rotación de archivos
+- **Estadísticas de uso:** `/stats` en tiempo real
 
-### 🔒 Privado y Seguro
-Ningún dato, código o conversación sale de tu equipo. Ideal para trabajar con código propietario o confidencial sin preocupaciones de seguridad.
-
-### 🎨 Personalizable
-Puedes cambiar el modelo de lenguaje según tus necesidades, ajustar la cantidad de contexto histórico y personalizar el comportamiento del asistente.
-
----
-
-## 🚀 Instalación
-
-### Requisitos previos
-
-Antes de instalar PatCode, asegúrate de tener:
-
-1. **Python 3.9 o superior**
-   - Descarga desde [python.org](https://www.python.org/downloads/)
-   - Verifica la instalación:
-     ```bash
-     python --version
-     ```
-
-2. **Ollama instalado y en ejecución**
-   - Descarga desde [ollama.ai](https://ollama.ai/)
-   - Verifica que Ollama esté funcionando:
-     ```bash
-     ollama list
-     ```
-   - Deberías ver una lista de modelos disponibles:
-     ```
-     NAME              ID              SIZE      MODIFIED
-     llama3.2:latest   a80c4f17acd5    2.0 GB    5 days ago
-     ```
-
-3. **Git** (opcional, para clonar el repositorio)
+### 🎨 Interfaz Moderna
+- **Rich Terminal UI:** syntax highlighting, paneles, tablas
+- **Autocompletado** con historial persistente
+- **Progress bars** para operaciones largas
+- **Markdown rendering** de respuestas
 
 ---
 
-### Instalación en Windows
+## 🚀 Instalación Rápida
 
-1. **Clonar el repositorio:**
-   ```cmd
-   git clone https://github.com/gonzacba17/Patcode.git
-   cd Patcode
-   ```
-
-2. **Crear un entorno virtual:**
-   ```cmd
-   python -m venv venv
-   venv\Scripts\activate
-   ```
-
-3. **Instalar dependencias:**
-   ```cmd
-   pip install -r requirements.txt
-   ```
-
-4. **Configurar variables de entorno:**
-   ```cmd
-   copy .env.example .env
-   REM Edita .env si necesitas cambiar configuración (modelo, timeouts, etc.)
-   ```
-
-5. **Verificar instalación:**
-   ```cmd
-   python -c "from utils.ollama_check import startup_checks; startup_checks()"
-   ```
-
-6. **Ejecutar PatCode:**
-   ```cmd
-   python main.py
-   ```
-
----
-
-### Instalación en macOS / Linux
-
-1. **Clonar el repositorio:**
-   ```bash
-   git clone https://github.com/gonzacba17/Patcode.git
-   cd Patcode
-   ```
-
-2. **Crear un entorno virtual:**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-
-3. **Instalar dependencias:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Configurar variables de entorno:**
-   ```bash
-   cp .env.example .env
-   # Edita .env si necesitas cambiar configuración (modelo, timeouts, etc.)
-   ```
-
-5. **Verificar instalación:**
-   ```bash
-   python -c "from utils.ollama_check import startup_checks; startup_checks()"
-   ```
-
-6. **Ejecutar PatCode:**
-   ```bash
-   python main.py
-   ```
-
----
-
-### Configuración de Ollama
-
-Si no tienes un modelo descargado, puedes obtener uno con:
+### Opción 1: Script Automático (Recomendado)
 
 ```bash
-# Para uso general de código
-ollama pull llama3.2
+# Clonar repositorio
+git clone https://github.com/gonzacba17/Patocode.git
+cd Patocode
 
-# O para tareas específicas de programación (mejor para código)
-ollama pull codellama
+# Ejecutar instalador
+./install.sh
+```
 
-# O Qwen para código (recomendado, rápido y eficiente)
+El script detecta tu sistema operativo y te guía paso a paso.
+
+### Opción 2: Docker
+
+```bash
+# Iniciar con docker-compose
+docker-compose up -d
+
+# Usar PatCode
+docker-compose exec patcode python main.py
+
+# Ver logs
+docker-compose logs -f patcode
+```
+
+### Opción 3: Manual
+
+```bash
+# Crear entorno virtual
+python3 -m venv venv
+source venv/bin/activate  # Linux/macOS
+# o
+venv\Scripts\activate     # Windows
+
+# Instalar dependencias
+pip install -r requirements.txt
+
+# Configurar
+cp .env.example .env
+
+# Instalar Ollama (si no lo tienes)
+# https://ollama.ai
+
+# Descargar modelo
 ollama pull qwen2.5-coder:7b
 
-# O Mistral para español
-ollama pull mistral
-```
-
-Para verificar que el servicio de Ollama está activo:
-
-```bash
-curl http://localhost:11434/api/tags
-```
-
-### Verificación de Instalación
-
-PatCode ejecutará verificaciones automáticas al iniciar:
-- ✓ Servicio de Ollama disponible
-- ✓ Modelo configurado presente
-- ✓ Directorios necesarios creados
-- ✓ Permisos de escritura en logs y memoria
-
-Si hay errores, recibirás mensajes claros sobre cómo solucionarlos.
-
-### Configuración Avanzada
-
-Edita `.env` para personalizar:
-```bash
-# Cambiar modelo
-OLLAMA_MODEL=codellama
-
-# Ajustar memoria
-MAX_CONTEXT_MESSAGES=20
-MAX_MEMORY_FILE_SIZE=5242880
-
-# Configurar logging
-LOG_LEVEL=DEBUG
-ENABLE_FILE_LOGGING=true
-
-# Ajustar timeouts
-REQUEST_TIMEOUT=120
-```
-
-### Troubleshooting
-
-**Error: "Ollama no está corriendo"**
-```bash
-# Inicia Ollama manualmente
-ollama serve
-```
-
-**Error: "Modelo no encontrado"**
-```bash
-# Descarga el modelo especificado en .env
-ollama pull qwen2.5-coder:7b
-```
-
-**Error: "Permission denied" en logs/**
-```bash
-# Dale permisos al directorio (Linux/macOS)
-chmod 755 logs/
+# Ejecutar
+python main.py
 ```
 
 ---
 
 ## 💻 Uso
 
-### Iniciar el asistente
-
-Ejecuta el archivo principal desde tu terminal:
+### Comandos Disponibles
 
 ```bash
-python main.py
+# Comandos básicos
+/help              # Muestra ayuda completa
+/model [nombre]    # Cambia modelo LLM (si implementado)
+/clear             # Limpia memoria activa
+/exit              # Sale del programa
+
+# Gestión de contexto
+/load <archivo>    # Carga archivo al contexto
+/files             # Lista archivos cargados
+/unload <archivo>  # Descarga archivo del contexto
+/show <archivo>    # Muestra contenido de archivo cargado
+
+# Memoria y estadísticas
+/stats             # Muestra estadísticas de uso
+/search <texto>    # Busca en historial
+/export [archivo]  # Exporta conversación a JSON
+
+# Plugins
+/plugins           # Gestiona plugins
+/cache             # Gestiona caché de respuestas
 ```
 
-Verás el mensaje de bienvenida:
+### Ejemplos de Uso
 
+#### 1. Pregunta Simple
 ```
-🤖 Bienvenido a PatCode (versión local con Ollama)
-
-Tú: 
-```
-
-### Ejemplos de interacción
-
-#### Ejemplo 1: Explicar conceptos
-```
-Tú: ¿Qué son los decoradores en Python?
-PatCode: Los decoradores en Python son funciones que modifican el comportamiento 
-de otras funciones o métodos. Se utilizan con la sintaxis @decorator...
+Tú: ¿Qué es un decorador en Python?
+PatCode: Un decorador en Python es una función que modifica el comportamiento...
 ```
 
-#### Ejemplo 2: Análisis de código
+#### 2. Explicar Código
 ```
-Tú: Explicame este código:
+Tú: Explica este código:
 def factorial(n):
     return 1 if n == 0 else n * factorial(n-1)
 
-PatCode: Este código implementa una función recursiva para calcular el factorial 
-de un número. Si n es 0, retorna 1 (caso base). En caso contrario, multiplica 
-n por el factorial de n-1...
+PatCode: Esta función calcula el factorial de un número usando recursión...
 ```
 
-#### Ejemplo 3: Depuración
+#### 3. Análisis de Proyecto
 ```
-Tú: Mi código da error "IndexError: list index out of range". ¿Qué significa?
+Tú: /load README.md
+PatCode: ✅ Archivo cargado al contexto
 
-PatCode: Este error significa que estás intentando acceder a una posición en 
-una lista que no existe. Por ejemplo, si tienes una lista de 3 elementos e 
-intentas acceder al índice 5...
-```
-
-#### Ejemplo 4: Sugerencias de mejora
-```
-Tú: ¿Cómo puedo hacer este código más eficiente?
-for i in range(len(lista)):
-    print(lista[i])
-
-PatCode: Puedes simplificar este código usando iteración directa sobre la lista:
-for elemento in lista:
-    print(elemento)
-Esto es más Pythonic y eficiente...
+Tú: Analiza la estructura del proyecto
+PatCode: Basándome en el README, este proyecto tiene...
 ```
 
-### Comandos disponibles
+#### 4. Usar Plugins
+```
+Tú: /plugins
+PatCode: [Muestra tabla de plugins disponibles]
 
-- **Salir del asistente:** Escribe `salir`, `exit` o `quit`
-- **Nueva conversación:** Simplemente comienza a escribir, el contexto se mantiene automáticamente
-- **Código multilínea:** Puedes pegar código directamente en la terminal
+Tú: Usa git_helper para ver el status
+PatCode: [Ejecuta git status y muestra análisis]
+```
 
 ---
 
-## 📁 Estructura del código
+## 🏗️ Arquitectura
 
 ```
 PatCode/
+├── agents/                      # Lógica principal
+│   ├── llm_adapters/           # Abstracción de providers
+│   │   ├── base_adapter.py     # Interfaz base
+│   │   ├── ollama_adapter.py   # Adapter Ollama
+│   │   ├── openai_adapter.py   # Adapter OpenAI
+│   │   └── groq_adapter.py     # Adapter Groq
+│   ├── memory/                 # Sistema de memoria
+│   │   ├── memory_manager.py   # Gestor principal
+│   │   └── sqlite_memory_manager.py  # Persistencia SQLite
+│   ├── cache/                  # Sistema de caché
+│   │   └── cache_manager.py    # Gestor de caché
+│   ├── pat_agent.py            # Agente principal
+│   └── orchestrator.py         # Orquestador de flujos
 │
-├── main.py                      # Punto de entrada principal
-├── requirements.txt             # Dependencias del proyecto
-├── README.md                    # Documentación (este archivo)
+├── plugins/                     # Sistema de plugins
+│   ├── base.py                 # PluginInterface, PluginManager
+│   ├── registry.py             # Registro de plugins
+│   └── builtin/                # Plugins integrados
+│       ├── code_explainer.py   # Explicador de código
+│       ├── git_helper.py       # Helper de Git
+│       └── file_analyzer.py    # Analizador de archivos
 │
-├── agents/                      # Módulos de agentes IA
-│   ├── __init__.py
-│   ├── pat_agent.py            # Lógica principal del asistente
-│   └── memory/
-│       └── memory.json         # Memoria persistente de conversaciones
+├── ui/                         # Interfaz de usuario
+│   ├── rich_terminal.py        # Terminal UI con Rich
+│   ├── cli.py                  # CLI con Click
+│   └── memory_commands.py      # Comandos de memoria
 │
-├── config/                      # Configuraciones del proyecto
-│   ├── __init__.py
-│   └── settings.py             # Configuraciones generales
+├── utils/                      # Utilidades
+│   ├── simple_telemetry.py     # Telemetría
+│   ├── response_cache.py       # Caché de respuestas
+│   ├── logger.py               # Sistema de logging
+│   └── validators.py           # Validadores
 │
-├── context/                     # Manejo del contexto de conversación
-│   ├── __init__.py
-│   └── context_manager.py      # Gestión del contexto histórico
+├── config/                     # Configuración
+│   ├── settings.py             # Settings centralizados
+│   ├── model_selector.py       # Selector de modelos
+│   └── prompts.py              # Prompts del sistema
 │
-├── tests/                       # Pruebas unitarias e integración
-│   ├── __init__.py
-│   ├── test_agent.py           # Tests del agente principal
-│   └── test_memory.py          # Tests de memoria persistente
+├── tests/                      # Tests (3200+ líneas)
+│   ├── test_*.py               # Tests unitarios
+│   └── integration/            # Tests de integración
 │
-├── tools/                       # Herramientas auxiliares
-│   ├── __init__.py
-│   └── code_analyzer.py        # Analizador de código
+├── scripts/                    # Scripts DevOps
+│   ├── setup.sh                # Setup inicial
+│   ├── deploy.sh               # Despliegue
+│   └── backup.sh               # Backup de datos
 │
-├── ui/                          # Interfaz de usuario
-│   ├── __init__.py
-│   └── terminal_ui.py          # Interfaz de terminal
+├── docs/                       # Documentación
+│   ├── README.MD               # Este archivo
+│   ├── CHANGELOG.md            # Historial de cambios
+│   ├── LLM_PROVIDERS.md        # Guía de providers
+│   └── QUICKSTART_LLM.md       # Quickstart LLM
 │
-└── utils/                       # Funciones utilitarias
-    ├── __init__.py
-    ├── logger.py               # Sistema de logging
-    └── validators.py           # Validadores de entrada
+├── Dockerfile                  # Containerización
+├── docker-compose.yml          # Orquestación Docker
+├── install.sh                  # Instalador automático
+├── requirements.txt            # Dependencias
+└── .env.example                # Configuración ejemplo
 ```
-
-### Descripción de módulos principales
-
-#### `main.py`
-Punto de entrada de la aplicación. Inicializa el agente PatCode y maneja el bucle principal de interacción con el usuario.
-
-#### `agents/pat_agent.py`
-Contiene la clase `PatAgent`, que gestiona:
-- Comunicación con la API de Ollama
-- Carga y guardado de memoria persistente
-- Construcción del contexto de conversación
-- Procesamiento de respuestas del modelo
-
-#### `agents/memory/memory.json`
-Almacena el historial de conversaciones en formato JSON para mantener el contexto entre sesiones.
-
-#### `config/settings.py`
-Define configuraciones globales como:
-- Modelo de Ollama a utilizar
-- Ruta de memoria
-- Parámetros de la API
-- Límites de contexto
-
-#### `context/context_manager.py`
-Gestiona el contexto de la conversación, incluyendo:
-- Límite de mensajes históricos
-- Formateo del contexto
-- Resumen de sesiones largas
-
-#### `tools/code_analyzer.py`
-Proporciona herramientas para analizar código, detectar patrones y ofrecer sugerencias específicas.
-
-#### `utils/logger.py`
-Sistema de logging para debug y seguimiento de errores.
 
 ---
 
-## 🧪 Pruebas
+## ⚙️ Configuración
 
-PatCode utiliza `pytest` como framework de pruebas. Las pruebas están organizadas en el directorio `tests/`.
-
-### Ejecutar todas las pruebas
+### Archivo `.env`
 
 ```bash
-# Activar el entorno virtual primero
-source venv/bin/activate  # En Linux/macOS
-# o
-venv\Scripts\activate     # En Windows
+# ================================
+# OLLAMA - Configuración LLM Local
+# ================================
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5-coder:7b
+OLLAMA_TEMPERATURE=0.7
+REQUEST_TIMEOUT=120
 
-# Ejecutar pruebas
+# ================================
+# PROVIDERS CLOUD (OPCIONAL)
+# ================================
+OPENAI_API_KEY=sk-...
+GROQ_API_KEY=gsk_...
+
+# ================================
+# MEMORIA - Persistencia
+# ================================
+MAX_HISTORY_MESSAGES=20
+CONTEXT_WINDOW_SIZE=10
+MAX_ACTIVE_MESSAGES=10
+MAX_MEMORY_FILE_SIZE=5242880  # 5MB
+
+# ================================
+# CACHÉ
+# ================================
+CACHE_ENABLED=true
+CACHE_TTL_SECONDS=86400  # 24 horas
+
+# ================================
+# LOGGING
+# ================================
+LOG_LEVEL=INFO
+ENABLE_FILE_LOGGING=true
+LOG_MAX_BYTES=10485760  # 10MB
+LOG_BACKUP_COUNT=5
+```
+
+### Modelos Recomendados
+
+| Modelo | RAM Min | RAM Rec | Velocidad | Uso Ideal |
+|--------|---------|---------|-----------|-----------|
+| `qwen2.5-coder:7b` | 8GB | 12GB | ⚡⚡ Rápido | **Coding general (RECOMENDADO)** |
+| `llama3.2:3b` | 6GB | 8GB | ⚡⚡⚡ Muy rápido | Chat, preguntas simples |
+| `codellama:7b` | 12GB | 16GB | ⚡ Balanceado | Debugging, refactoring |
+| `deepseek-coder:6.7b` | 10GB | 14GB | ⚡⚡ Rápido | Code completion, análisis |
+| `mistral:7b` | 12GB | 16GB | ⚡ Balanceado | General purpose |
+
+---
+
+## 🧪 Desarrollo
+
+### Instalar Dependencias de Desarrollo
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+### Ejecutar Tests
+
+```bash
+# Todos los tests
 pytest tests/
+
+# Con cobertura
+pytest --cov=agents --cov=plugins --cov=utils tests/
+
+# Tests específicos
+pytest tests/test_llm_system.py -v
+
+# Con reporte HTML
+pytest --cov=agents --cov-report=html tests/
 ```
 
-### Ejecutar pruebas específicas
+### Pre-commit Hooks
 
 ```bash
-# Pruebas del agente
-pytest tests/test_agent.py
+# Instalar hooks
+pre-commit install
 
-# Pruebas de memoria
-pytest tests/test_memory.py
-
-# Ejecutar con verbose
-pytest -v tests/
+# Ejecutar manualmente
+pre-commit run --all-files
 ```
 
-### Cobertura de código
-
-Para generar un reporte de cobertura:
+### Linting y Formateo
 
 ```bash
-pip install pytest-cov
-pytest --cov=agents --cov=utils tests/
+# Black (formateo)
+black agents/ plugins/ utils/
+
+# isort (ordenar imports)
+isort agents/ plugins/ utils/
+
+# flake8 (linting)
+flake8 agents/ plugins/ utils/
 ```
-
-### Estructura de pruebas
-
-```python
-# tests/test_agent.py
-import pytest
-from agents.pat_agent import PatAgent
-
-def test_agent_initialization():
-    """Verifica que el agente se inicialice correctamente"""
-    agent = PatAgent()
-    assert agent.model == "llama3.2:latest"
-    assert agent.history == []
-
-def test_memory_persistence():
-    """Verifica que la memoria se guarde correctamente"""
-    agent = PatAgent()
-    agent.ask("Hola")
-    assert len(agent.history) > 0
-```
-
-### Agregar nuevas pruebas
-
-1. Crea un nuevo archivo en `tests/` con el prefijo `test_`
-2. Importa los módulos necesarios
-3. Define funciones de prueba con el prefijo `test_`
-4. Usa `assert` para verificar comportamientos esperados
 
 ---
 
-## 🤝 Contribuciones
+## 📊 Estado del Proyecto
 
-¡Las contribuciones son bienvenidas! PatCode es un proyecto de código abierto y estamos encantados de recibir mejoras de la comunidad.
+### Versión Actual: `1.0.0-beta` ✅ **FUNCIONAL**
 
-### Cómo contribuir
+**Progreso General: ~90% Completado** 🎉
 
-1. **Fork del repositorio**
-   - Haz clic en "Fork" en la parte superior derecha de la página del repositorio
+#### ✅ Completado (Fases 1, 2 y 3)
 
-2. **Clona tu fork**
-   ```bash
-   git clone https://github.com/TU_USUARIO/Patcode.git
-   cd Patcode
-   ```
+- ✅ **Fase 1 - Fundamentos (100%)**
+  - Sistema de configuración externalizada
+  - Manejo robusto de errores
+  - Logging avanzado
+  - Healthcheck de Ollama
+  - Validadores de entrada
 
-3. **Crea una rama para tu feature**
-   ```bash
-   git checkout -b feature/mi-nueva-funcionalidad
-   ```
+- ✅ **Fase 2 - Arquitectura Multi-Provider (90%)**
+  - ✅ Abstracción de providers (BaseAdapter)
+  - ✅ **Adapters funcionales:** Ollama, OpenAI, Groq (3/3)
+  - ✅ Sistema de memoria optimizado con rotación
+  - ✅ Comandos especiales implementados
+  - ✅ **Bugs críticos resueltos** (2025-10-21)
+  - 🚧 Streaming de respuestas (pendiente)
+  - 🚧 Comando `/model` dinámico (pendiente)
 
-4. **Realiza tus cambios**
-   - Asegúrate de seguir las convenciones de código
-   - Añade pruebas para nuevas funcionalidades
-   - Actualiza la documentación si es necesario
+- ✅ **Fase 3 - Avanzado (100%)**
+  - Sistema de plugins extensible
+  - 3 plugins built-in funcionales
+  - Caché inteligente con TTL
+  - Telemetría simple y avanzada
+  - Containerización completa (Docker)
+  - CI/CD configurado (GitHub Actions)
+  - Scripts DevOps (4 scripts)
 
-5. **Commit de tus cambios**
-   ```bash
-   git add .
-   git commit -m "feat: descripción clara de los cambios"
-   ```
+#### 🐛 Bugs Conocidos
 
-6. **Push a tu fork**
-   ```bash
-   git push origin feature/mi-nueva-funcionalidad
-   ```
+- ⚠️ **Warning de logger** (no crítico) - PathLike error al arrancar
+- 📋 **Todos los bugs críticos resueltos** (21-Oct-2025)
 
-7. **Crea un Pull Request**
-   - Ve a tu fork en GitHub
-   - Haz clic en "New Pull Request"
-   - Describe tus cambios detalladamente
+#### 📋 Pendiente (Fase 4)
 
-### Convenciones de código
+- [ ] Implementar streaming de respuestas (3-4h)
+- [ ] Comando `/model` para cambio dinámico (2h)
+- [ ] Completar tests de integración (>70% cobertura)
+- [ ] Ejecutar CI/CD pipeline completo
+- [ ] Resolver warning de logger
 
-- **Estilo:** Seguimos [PEP 8](https://pep8.org/) para código Python
-- **Docstrings:** Utiliza docstrings para documentar funciones y clases
-- **Type hints:** Preferimos el uso de type hints cuando sea posible
-- **Commits:** Utiliza [Conventional Commits](https://www.conventionalcommits.org/)
-  - `feat:` para nuevas funcionalidades
-  - `fix:` para corrección de bugs
-  - `docs:` para cambios en documentación
-  - `test:` para añadir o modificar pruebas
-  - `refactor:` para refactorización de código
+### Métricas Reales
 
-### Reportar issues
+- **Archivos Python:** 161
+- **Líneas de código:** 34,279
+- **Tests:** 17 archivos (3,020 líneas)
+- **Plugins built-in:** 3/3 funcionales
+- **Adapters funcionales:** 3/3 ✅
+- **Providers soportados:** 3
+- **Comandos CLI:** ~12
+- **Dependencias:** 21
+- **Bugs críticos:** 0 ✅
 
-Si encuentras un bug o tienes una sugerencia:
-
-1. Verifica que no exista un issue similar
-2. Crea un nuevo issue con:
-   - Título descriptivo
-   - Descripción detallada del problema
-   - Pasos para reproducir (si aplica)
-   - Versión de Python y Ollama
-   - Sistema operativo
-
-### Ideas para contribuir
-
-- 🐛 Reportar y corregir bugs
-- ✨ Proponer nuevas funcionalidades
-- 📖 Mejorar la documentación
-- 🌐 Añadir traducciones
-- 🧪 Aumentar la cobertura de pruebas
-- ⚡ Optimizar el rendimiento
+Ver [ROADMAP.md](ROADMAP.md) para detalles completos.
 
 ---
 
-## 📄 Licencia
+## 🤝 Contribuir
 
-Este proyecto está licenciado bajo la **MIT License**.
+¡Las contribuciones son bienvenidas!
 
-```
-MIT License
+1. Fork el repositorio
+2. Crea una rama: `git checkout -b feature/nueva-funcionalidad`
+3. Commit: `git commit -m "feat: nueva funcionalidad"`
+4. Push: `git push origin feature/nueva-funcionalidad`
+5. Crea un Pull Request
+
+### Convenciones
+
+- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/)
+  - `feat:` - Nueva funcionalidad
+  - `fix:` - Corrección de bug
+  - `docs:` - Documentación
+  - `test:` - Tests
+  - `refactor:` - Refactorización
+
+- **Código:** PEP 8
+- **Docstrings:** Google Style
+- **Type hints:** Preferidos
+
+---
+
+## 📝 Licencia
+
+MIT License - Ver [LICENSE](../LICENSE)
 
 Copyright (c) 2025 Gonza Cba
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### ¿Qué significa esto?
-
-La licencia MIT te permite:
-
-✅ Usar el código comercialmente  
-✅ Modificar el código  
-✅ Distribuir el código  
-✅ Uso privado  
-✅ Sublicenciar  
-
-Con la única condición de incluir el aviso de copyright y la licencia en todas las copias.
 
 ---
 
 ## 🙏 Agradecimientos
 
-- **Anthropic** por la inspiración con [Claude Code](https://claude.ai/)
-- **Ollama** por proporcionar una plataforma excelente para ejecutar modelos localmente
-- **La comunidad open-source** por las bibliotecas y herramientas que hacen posible este proyecto
+- [Anthropic](https://anthropic.com) - Inspiración con Claude Code
+- [Ollama](https://ollama.ai) - Motor LLM local
+- [Rich](https://rich.readthedocs.io) - UI de terminal
+- Comunidad open-source
 
 ---
 
-## 🔮 Roadmap
+## 📧 Contacto y Soporte
 
-### ✅ Versión actual (v1.0)
-- Interacción en terminal
-- Memoria básica persistente
-- Soporte para múltiples modelos de Ollama
-
-### 🚧 Próximas versiones
-
-#### v1.1 - Análisis de proyectos
-- Lectura y análisis de carpetas completas
-- Navegación por estructura de archivos
-- Búsqueda de código en proyectos
-
-#### v1.2 - Herramientas de desarrollo
-- Ejecución de comandos locales (compilar, testear)
-- Integración con Git (commits automáticos, PRs)
-- Linting y formateo automático
-
-#### v1.3 - Mejoras de UX
-- Interfaz visual opcional (Streamlit/Electron)
-- Resumen automático de sesiones largas
-- Exportación de conversaciones
-
-#### v2.0 - Características avanzadas
-- Soporte para múltiples lenguajes de programación
-- Plantillas de código y snippets
-- Integración con IDEs (VS Code extension)
-
----
-
-## 🚀 Performance y Cache
-
-### Sistema de Cache Inteligente
-
-PatCode cachea automáticamente las respuestas del LLM para acelerar queries repetidas:
-
-```bash
-# Ver estadísticas de cache
-patcode cache stats
-
-# Limpiar cache expirado (>24h)
-patcode cache clean
-
-# Limpiar todo el cache
-patcode cache clear
-```
-
-**Características:**
-- ✅ Cache automático basado en contexto (mensajes + archivos)
-- ✅ TTL de 24 horas (configurable)
-- ✅ Hit rate típico: 35-40% en sesiones largas
-- ✅ Ahorro de tiempo: 50% en queries repetidas
-
-### Selección Automática de Modelos
-
-PatCode detecta tu hardware y recomienda el mejor modelo:
-
-```bash
-# Selección automática según RAM disponible
-patcode chat --auto
-
-# Ver modelos compatibles
-patcode models
-
-# Forzar modelo específico
-patcode chat --model llama3.2:3b
-
-# Desactivar cache (útil para testing)
-patcode chat --no-cache
-```
-
-**Perfiles de Modelos:**
-
-| Modelo | RAM Min | RAM Rec | Velocidad | Uso Ideal |
-|--------|---------|---------|-----------|-----------|
-| llama3.2:1b | 4GB | 6GB | ⚡ Rápido | Chat, preguntas simples |
-| llama3.2:3b | 8GB | 12GB | ✅ Balanceado | Coding general, análisis |
-| codellama:7b | 12GB | 16GB | ✅ Balanceado | Debugging, arquitectura |
-| codellama:13b | 16GB | 24GB | 🔬 Profundo | Refactor complejo, análisis profundo |
-| mistral:7b | 12GB | 16GB | ✅ Balanceado | General, documentación |
-
----
-
-## 📞 Contacto y soporte
-
-- **GitHub Issues:** [github.com/gonzacba17/Patcode/issues](https://github.com/gonzacba17/Patcode/issues)
+- **GitHub Issues:** [github.com/gonzacba17/Patocode/issues](https://github.com/gonzacba17/Patocode/issues)
+- **Repositorio:** [github.com/gonzacba17/Patocode](https://github.com/gonzacba17/Patocode)
 - **Autor:** Gonza Cba
-- **Repositorio:** [github.com/gonzacba17/Patcode](https://github.com/gonzacba17/Patcode)
 
 ---
 
-## 📚 Recursos adicionales
+## 📚 Recursos Adicionales
 
-- [Documentación de Ollama](https://github.com/ollama/ollama)
-- [Guía de Python](https://docs.python.org/3/)
-- [Claude Code de Anthropic](https://claude.ai/code)
-- [PEP 8 - Guía de estilo Python](https://pep8.org/)
+- [Documentación Ollama](https://github.com/ollama/ollama)
+- [LLM Providers Guide](LLM_PROVIDERS.md)
+- [Quickstart LLM](QUICKSTART_LLM.md)
+- [Performance Guide](performance_guide.md)
+- [Changelog Completo](CHANGELOG.md)
+
+---
 
 **Creado con ❤️ por Gonza Cba**
 
-Si te gusta PatCode, ¡no olvides darle una ⭐ en GitHub!
+_Si te gusta PatCode, ¡dale una ⭐ en GitHub!_

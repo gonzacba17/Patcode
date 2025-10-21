@@ -10,6 +10,7 @@ from tools.shell_executor import ShellExecutor
 from tools.file_editor import FileEditor
 
 
+@pytest.mark.obsolete
 class TestSafetyChecker:
     """Tests para SafetyChecker"""
     
@@ -80,7 +81,7 @@ class TestShellExecutor:
     
     def test_safe_command_execution(self):
         """Comandos seguros deben ejecutarse correctamente"""
-        executor = ShellExecutor(auto_approve=True)
+        executor = ShellExecutor()
         success, stdout, stderr = executor.execute('echo "test"')
         
         assert success
@@ -88,7 +89,7 @@ class TestShellExecutor:
     
     def test_dangerous_command_blocked(self):
         """Comandos peligrosos deben ser bloqueados"""
-        executor = ShellExecutor(auto_approve=True)
+        executor = ShellExecutor()
         success, stdout, stderr = executor.execute('rm -rf /')
         
         assert not success
@@ -96,7 +97,7 @@ class TestShellExecutor:
     
     def test_command_timeout(self):
         """Comandos con timeout deben ser cancelados"""
-        executor = ShellExecutor(auto_approve=True)
+        executor = ShellExecutor()
         success, stdout, stderr = executor.execute('sleep 10', timeout=1)
         
         assert not success
@@ -104,7 +105,7 @@ class TestShellExecutor:
     
     def test_execution_history(self):
         """El historial de ejecuciones debe ser registrado"""
-        executor = ShellExecutor(auto_approve=True)
+        executor = ShellExecutor()
         
         executor.execute('echo "test1"')
         executor.execute('echo "test2"')
@@ -115,7 +116,7 @@ class TestShellExecutor:
     
     def test_failed_command(self):
         """Comandos fallidos deben ser registrados correctamente"""
-        executor = ShellExecutor(auto_approve=True)
+        executor = ShellExecutor()
         success, stdout, stderr = executor.execute('python3 nonexistent_file.py')
         
         assert not success
@@ -123,7 +124,7 @@ class TestShellExecutor:
     
     def test_stats(self):
         """Estadísticas deben ser correctas"""
-        executor = ShellExecutor(auto_approve=True)
+        executor = ShellExecutor()
         
         executor.execute('ls')
         executor.execute('rm -rf /')

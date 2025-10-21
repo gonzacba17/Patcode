@@ -15,6 +15,7 @@ def ui():
     return RichTerminalUI()
 
 
+@pytest.mark.ui
 def test_init(ui):
     """Verifica inicialización correcta"""
     assert ui.console is not None

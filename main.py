@@ -16,6 +16,7 @@ from rich.table import Table
 
 from agents.pat_agent import PatAgent
 from config import settings
+from utils.ollama_check import startup_checks
 from exceptions import (
     PatCodeError,
     OllamaConnectionError,
@@ -400,6 +401,18 @@ def main() -> None:
     logger.info("Iniciando PatCode...")
     
     try:
+        # Verificar Ollama antes de inicializar
+        with console.status("[bold yellow]🔍 Verificando Ollama...[/bold yellow]"):
+            try:
+                startup_checks()
+            except (OllamaConnectionError, OllamaModelNotFoundError) as e:
+                console.print(f"[red]❌ {e.args[0]}[/red]")
+                if len(e.args) > 1:
+                    console.print(f"[yellow]{e.args[1]}[/yellow]")
+                sys.exit(1)
+        
+        console.print("[green]✓ Ollama disponible[/green]")
+        
         # Inicializar agente
         with console.status("[bold yellow]Inicializando PatCode...[/bold yellow]"):
             agent = PatAgent()

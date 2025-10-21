@@ -8,7 +8,10 @@ organizadas jerárquicamente desde una clase base.
 
 class PatCodeError(Exception):
     """Excepción base para todos los errores de PatCode."""
-    pass
+    def __init__(self, message: str, details: str = None):
+        self.message = message
+        self.details = details
+        super().__init__(self.message)
 
 
 # ==================== Errores de Ollama ====================

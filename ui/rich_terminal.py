@@ -11,11 +11,12 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 from rich.table import Table
 from rich.tree import Tree
 from rich.prompt import Confirm, Prompt
+from rich.live import Live
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Generator
 import time
 
 
@@ -317,3 +318,69 @@ class RichTerminalUI:
             color = "red"
         
         return f"[{color}]{bar}[/{color}]"
+    
+    def display_streaming_response(self, response_generator: Generator) -> str:
+        """Muestra respuesta en streaming con actualización progresiva"""
+        accumulated = ""
+        
+        with Live(
+            self._create_response_panel("*Generando respuesta...*"),
+            console=self.console,
+            refresh_per_second=10,
+            transient=False
+        ) as live:
+            try:
+                for chunk in response_generator:
+                    accumulated += chunk
+                    live.update(self._create_response_panel(accumulated))
+            
+            except KeyboardInterrupt:
+                self.console.print("\n⚠️  [yellow]Generación cancelada[/yellow]")
+                return accumulated
+        
+        return accumulated
+    
+    def _create_response_panel(self, content: str) -> Panel:
+        """Crea panel para respuesta del asistente"""
+        if "```" in content or "#" in content[:10]:
+            renderable = Markdown(content)
+        else:
+            renderable = f"[cyan]{content}[/cyan]"
+        
+        return Panel(
+            renderable,
+            title="🤖 PatCode",
+            border_style="cyan",
+            padding=(1, 2)
+        )
+    
+    def display_search_results(self, results: List[Dict]):
+        """Muestra resultados de búsqueda en historial"""
+        if not results:
+            self.display_info("No se encontraron resultados", "🔍 Búsqueda")
+            return
+        
+        self.console.print(f"\n🔍 [cyan]Encontrados {len(results)} resultados:[/cyan]\n")
+        
+        for i, msg in enumerate(results, 1):
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            timestamp = msg.get("timestamp", "")
+            
+            role_emoji = "👤" if role == "user" else "🤖" if role == "assistant" else "⚙️"
+            role_name = role.title()
+            
+            if len(content) > 200:
+                content = content[:200] + "..."
+            
+            panel_content = content
+            if timestamp:
+                panel_content += f"\n\n[dim]*{timestamp}*[/dim]"
+            
+            self.console.print(
+                Panel(
+                    panel_content,
+                    title=f"{i}. {role_emoji} {role_name}",
+                    border_style="dim"
+                )
+            )

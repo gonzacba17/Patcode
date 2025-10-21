@@ -118,12 +118,18 @@ Antes de instalar PatCode, asegúrate de tener:
    pip install -r requirements.txt
    ```
 
-4. **Crear estructura de directorios (si no existe):**
+4. **Configurar variables de entorno:**
    ```cmd
-   mkdir agents\memory
+   copy .env.example .env
+   REM Edita .env si necesitas cambiar configuración (modelo, timeouts, etc.)
    ```
 
-5. **Ejecutar PatCode:**
+5. **Verificar instalación:**
+   ```cmd
+   python -c "from utils.ollama_check import startup_checks; startup_checks()"
+   ```
+
+6. **Ejecutar PatCode:**
    ```cmd
    python main.py
    ```
@@ -149,12 +155,18 @@ Antes de instalar PatCode, asegúrate de tener:
    pip install -r requirements.txt
    ```
 
-4. **Crear estructura de directorios (si no existe):**
+4. **Configurar variables de entorno:**
    ```bash
-   mkdir -p agents/memory
+   cp .env.example .env
+   # Edita .env si necesitas cambiar configuración (modelo, timeouts, etc.)
    ```
 
-5. **Ejecutar PatCode:**
+5. **Verificar instalación:**
+   ```bash
+   python -c "from utils.ollama_check import startup_checks; startup_checks()"
+   ```
+
+6. **Ejecutar PatCode:**
    ```bash
    python main.py
    ```
@@ -169,8 +181,11 @@ Si no tienes un modelo descargado, puedes obtener uno con:
 # Para uso general de código
 ollama pull llama3.2
 
-# O para tareas específicas de programación
+# O para tareas específicas de programación (mejor para código)
 ollama pull codellama
+
+# O Qwen para código (recomendado, rápido y eficiente)
+ollama pull qwen2.5-coder:7b
 
 # O Mistral para español
 ollama pull mistral
@@ -180,6 +195,55 @@ Para verificar que el servicio de Ollama está activo:
 
 ```bash
 curl http://localhost:11434/api/tags
+```
+
+### Verificación de Instalación
+
+PatCode ejecutará verificaciones automáticas al iniciar:
+- ✓ Servicio de Ollama disponible
+- ✓ Modelo configurado presente
+- ✓ Directorios necesarios creados
+- ✓ Permisos de escritura en logs y memoria
+
+Si hay errores, recibirás mensajes claros sobre cómo solucionarlos.
+
+### Configuración Avanzada
+
+Edita `.env` para personalizar:
+```bash
+# Cambiar modelo
+OLLAMA_MODEL=codellama
+
+# Ajustar memoria
+MAX_CONTEXT_MESSAGES=20
+MAX_MEMORY_FILE_SIZE=5242880
+
+# Configurar logging
+LOG_LEVEL=DEBUG
+ENABLE_FILE_LOGGING=true
+
+# Ajustar timeouts
+REQUEST_TIMEOUT=120
+```
+
+### Troubleshooting
+
+**Error: "Ollama no está corriendo"**
+```bash
+# Inicia Ollama manualmente
+ollama serve
+```
+
+**Error: "Modelo no encontrado"**
+```bash
+# Descarga el modelo especificado en .env
+ollama pull qwen2.5-coder:7b
+```
+
+**Error: "Permission denied" en logs/**
+```bash
+# Dale permisos al directorio (Linux/macOS)
+chmod 755 logs/
 ```
 
 ---

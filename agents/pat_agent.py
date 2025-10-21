@@ -34,6 +34,8 @@ from rag.vector_store import VectorStore
 from rag.code_indexer import CodeIndexer
 from rag.retriever import ContextRetriever
 from agents.llm_manager import LLMManager
+from plugins.base import PluginManager
+from plugins.registry import PluginRegistry
 
 logger = setup_logger(__name__)
 
@@ -60,7 +62,8 @@ class PatAgent:
         llm_manager: Optional[LLMManager] = None,
         file_manager: Optional[FileManager] = None,
         cache: Optional[ResponseCache] = None,
-        model_selector = None
+        model_selector = None,
+        enable_plugins: bool = True
     ):
         """
         Inicializa el agente PatCode con Dependency Injection.
@@ -70,6 +73,7 @@ class PatAgent:
             file_manager: Gestor de archivos (opcional, se crea por defecto)
             cache: Sistema de caché (opcional, se crea por defecto)
             model_selector: Selector de modelos (opcional, se crea por defecto)
+            enable_plugins: Habilita sistema de plugins (default: True)
         
         Raises:
             MemoryReadError: Si hay problemas al cargar el historial
@@ -84,6 +88,12 @@ class PatAgent:
         self.file_manager = file_manager or FileManager()
         self.cache = cache or ResponseCache(cache_dir='.patcode_cache', ttl_hours=24)
         self.model_selector = model_selector or get_model_selector()
+        
+        self.plugin_manager = None
+        if enable_plugins:
+            self.plugin_manager = PluginManager()
+            PluginRegistry.load_plugins(self.plugin_manager)
+            logger.info(f"Plugins cargados: {len(self.plugin_manager.plugins)}")
         
         # Log info del modelo
         model_info = self.model_selector.get_model_info(self.model)
@@ -130,6 +140,9 @@ class PatAgent:
         
         # Auto-cargar README si existe
         self._auto_load_readme()
+        
+        if self.plugin_manager:
+            self.plugin_manager.set_context(self, self.memory_manager, self.llm_manager)
         
         logger.info(
             f"PatAgent inicializado | "
@@ -541,11 +554,12 @@ class PatAgent:
         
         Este método:
         1. Valida el prompt
-        2. Lo agrega al historial
-        3. Construye el contexto (incluyendo archivos)
-        4. Llama a Ollama
-        5. Guarda la respuesta
-        6. Persiste el historial
+        2. Ejecuta plugins si están habilitados
+        3. Lo agrega al historial
+        4. Construye el contexto (incluyendo archivos)
+        5. Llama a Ollama
+        6. Guarda la respuesta
+        7. Persiste el historial
         
         Args:
             prompt: Pregunta o comando del usuario
@@ -566,15 +580,23 @@ class PatAgent:
         
         validated_prompt = self._validate_prompt(prompt)
         
+        final_prompt = validated_prompt
+        if self.plugin_manager:
+            plugin_results = self.plugin_manager.execute_chain(validated_prompt)
+            
+            if self.plugin_manager.context.has("enhanced_prompt"):
+                final_prompt = self.plugin_manager.context.get("enhanced_prompt")
+                logger.debug("Prompt enriquecido por plugins")
+        
         self.memory_manager.add_message("user", validated_prompt)
         logger.debug(f"Pregunta agregada al historial: '{validated_prompt[:50]}...'")
         
         try:
             context = self._build_context()
-            rag_context = self._get_rag_context(validated_prompt)
-            files_content = self._get_files_context(validated_prompt)
+            rag_context = self._get_rag_context(final_prompt)
+            files_content = self._get_files_context(final_prompt)
             
-            answer = self._call_llm(context, rag_context, files_content, validated_prompt)
+            answer = self._call_llm(context, rag_context, files_content, final_prompt)
             
             self._save_response(answer)
             
@@ -657,3 +679,23 @@ class PatAgent:
         except Exception as e:
             logger.error(f"Error al exportar historial: {e}")
             raise MemoryWriteError(f"No se pudo exportar el historial: {e}")
+    
+    def list_plugins(self) -> List[Dict]:
+        """Lista plugins disponibles"""
+        if self.plugin_manager:
+            return self.plugin_manager.list_plugins()
+        return []
+    
+    def enable_plugin(self, plugin_name: str):
+        """Habilita un plugin"""
+        if self.plugin_manager:
+            plugin = self.plugin_manager.get_plugin(plugin_name)
+            if plugin:
+                plugin.enable()
+    
+    def disable_plugin(self, plugin_name: str):
+        """Deshabilita un plugin"""
+        if self.plugin_manager:
+            plugin = self.plugin_manager.get_plugin(plugin_name)
+            if plugin:
+                plugin.disable()

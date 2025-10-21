@@ -5,6 +5,7 @@ from typing import Callable, Dict, List, Optional, Any
 from dataclasses import dataclass
 import logging
 from pathlib import Path
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,58 @@ class CommandRegistry:
             usage="/llm <providers|switch|stats|test> [args]",
             requires_args=True,
             category="llm"
+        ))
+        
+        self.register(Command(
+            name="msearch",
+            handler=lambda ctx, args: self._handle_memory_search(ctx, args),
+            description="Busca en historial de conversaciones",
+            usage="/msearch <query>",
+            requires_args=True,
+            aliases=["memsearch"],
+            category="memory"
+        ))
+        
+        self.register(Command(
+            name="export",
+            handler=lambda ctx, args: self._handle_export(ctx, args),
+            description="Exporta conversación a Markdown",
+            usage="/export [archivo.md]",
+            category="memory"
+        ))
+        
+        self.register(Command(
+            name="mstats",
+            handler=lambda ctx, args: self._handle_memory_stats(ctx),
+            description="Estadísticas de memoria",
+            usage="/mstats",
+            aliases=["memstats"],
+            category="memory"
+        ))
+        
+        self.register(Command(
+            name="plugins",
+            handler=lambda ctx, args: self._handle_plugins(ctx, args),
+            description="Gestiona plugins del sistema",
+            usage="/plugins [list|enable|disable] [nombre]",
+            category="system"
+        ))
+        
+        self.register(Command(
+            name="cache",
+            handler=lambda ctx, args: self._handle_cache(ctx, args),
+            description="Gestiona caché de respuestas",
+            usage="/cache [stats|clear|cleanup]",
+            category="system"
+        ))
+        
+        self.register(Command(
+            name="telemetry",
+            handler=lambda ctx, args: self._handle_telemetry(ctx, args),
+            description="Muestra telemetría del sistema",
+            usage="/telemetry [stats|events|export|clear]",
+            aliases=["telem"],
+            category="system"
         ))
     
     def _handle_clear(self, ctx) -> str:
@@ -482,6 +535,259 @@ class CommandRegistry:
         
         else:
             return f"❌ Subcomando desconocido: {subcmd}\nDisponibles: providers, switch, stats, test"
+    
+    def _handle_memory_search(self, ctx, query: str) -> str:
+        """Busca en el historial de conversaciones"""
+        if not hasattr(ctx, 'memory_manager'):
+            return "❌ Memory manager no disponible"
+        
+        try:
+            results = ctx.memory_manager.search_messages(query.strip(), limit=10)
+            
+            if not results:
+                return "🔍 No se encontraron resultados"
+            
+            output = [f"🔍 Encontrados {len(results)} resultados:\n"]
+            
+            for i, msg in enumerate(results, 1):
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+                timestamp = msg.get("timestamp", "")
+                
+                role_emoji = "👤" if role == "user" else "🤖"
+                
+                if len(content) > 150:
+                    content = content[:150] + "..."
+                
+                output.append(f"{i}. {role_emoji} {role.title()}")
+                if timestamp:
+                    output.append(f"   [{timestamp}]")
+                output.append(f"   {content}\n")
+            
+            return '\n'.join(output)
+        
+        except Exception as e:
+            logger.error(f"Error en búsqueda de memoria: {e}")
+            return f"❌ Error: {str(e)}"
+    
+    def _handle_export(self, ctx, filename: str) -> str:
+        """Exporta conversación a Markdown"""
+        if not hasattr(ctx, 'memory_manager'):
+            return "❌ Memory manager no disponible"
+        
+        try:
+            from datetime import datetime
+            
+            if not filename:
+                filename = f"patcode_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+            
+            if not filename.endswith('.md'):
+                filename += '.md'
+            
+            output_path = Path(filename)
+            ctx.memory_manager.export_to_markdown(output_path)
+            
+            return f"✅ Conversación exportada a: {output_path}"
+        
+        except Exception as e:
+            logger.error(f"Error exportando: {e}")
+            return f"❌ Error: {str(e)}"
+    
+    def _handle_memory_stats(self, ctx) -> str:
+        """Muestra estadísticas de memoria"""
+        if not hasattr(ctx, 'memory_manager'):
+            return "❌ Memory manager no disponible"
+        
+        try:
+            stats = ctx.memory_manager.get_stats()
+            
+            output = [
+                "📊 Estadísticas de Memoria:\n",
+                f"  - Mensajes activos: {stats['active_messages']}",
+                f"  - Resúmenes pasivos: {stats['passive_summaries']}",
+                f"  - Contexto total: {stats['total_context']}"
+            ]
+            
+            return '\n'.join(output)
+        
+        except Exception as e:
+            logger.error(f"Error obteniendo stats: {e}")
+            return f"❌ Error: {str(e)}"
+    
+    def _handle_plugins(self, ctx, args: str) -> str:
+        """Gestiona plugins del sistema"""
+        if not hasattr(ctx, 'plugin_manager') or not ctx.plugin_manager:
+            return "❌ Sistema de plugins no está habilitado"
+        
+        parts = args.split() if args else []
+        
+        if not parts or parts[0] == "list":
+            plugins = ctx.list_plugins()
+            
+            if not plugins:
+                return "No hay plugins disponibles"
+            
+            output = ["🔌 Plugins Disponibles:\n"]
+            
+            for p in plugins:
+                status = "✅ Activo" if p["enabled"] else "❌ Inactivo"
+                output.append(f"  • {p['name']} v{p['version']}")
+                output.append(f"    {status} | Prioridad: {p['priority']}")
+                output.append(f"    {p['description']}")
+                output.append("")
+            
+            return '\n'.join(output)
+        
+        elif parts[0] == "enable":
+            if len(parts) < 2:
+                return "❌ Uso: /plugins enable <nombre>"
+            
+            plugin_name = parts[1]
+            ctx.enable_plugin(plugin_name)
+            return f"✅ Plugin '{plugin_name}' habilitado"
+        
+        elif parts[0] == "disable":
+            if len(parts) < 2:
+                return "❌ Uso: /plugins disable <nombre>"
+            
+            plugin_name = parts[1]
+            ctx.disable_plugin(plugin_name)
+            return f"✅ Plugin '{plugin_name}' deshabilitado"
+        
+        else:
+            return f"❌ Subcomando desconocido: {parts[0]}\nDisponibles: list, enable, disable"
+    
+    def _handle_cache(self, ctx, args: str) -> str:
+        """Gestiona caché de respuestas"""
+        if not hasattr(ctx, 'cache') or not ctx.cache:
+            return "❌ Sistema de caché no está disponible"
+        
+        parts = args.split() if args else []
+        
+        if not parts or parts[0] == "stats":
+            try:
+                stats = ctx.cache.get_stats()
+                
+                output = [
+                    "💾 Estadísticas de Caché:\n",
+                    f"  - Entradas: {stats.get('entries', stats.get('cache_size', 0))}",
+                    f"  - Hits: {stats.get('hits', stats.get('cache_hits', 0))}",
+                    f"  - Misses: {stats.get('misses', stats.get('cache_misses', 0))}",
+                    f"  - Hit rate: {stats.get('hit_rate', stats.get('cache_hit_rate', '0%'))}",
+                ]
+                
+                if 'evictions' in stats:
+                    output.append(f"  - Evictions: {stats['evictions']}")
+                
+                if 'size_mb' in stats:
+                    output.append(f"  - Tamaño: {stats['size_mb']:.2f} MB")
+                
+                return '\n'.join(output)
+            except Exception as e:
+                logger.error(f"Error obteniendo stats de caché: {e}")
+                return f"❌ Error: {str(e)}"
+        
+        elif parts[0] == "clear":
+            try:
+                ctx.cache.clear()
+                return "✅ Caché limpiado completamente"
+            except Exception as e:
+                return f"❌ Error: {str(e)}"
+        
+        elif parts[0] == "cleanup":
+            try:
+                if hasattr(ctx.cache, 'cleanup_expired'):
+                    ctx.cache.cleanup_expired()
+                    return "✅ Entradas expiradas eliminadas"
+                else:
+                    return "⚠️ Cleanup no disponible en este caché"
+            except Exception as e:
+                return f"❌ Error: {str(e)}"
+        
+        else:
+            return f"❌ Subcomando desconocido: {parts[0]}\nDisponibles: stats, clear, cleanup"
+    
+    def _handle_telemetry(self, ctx, args: str) -> str:
+        """Muestra telemetría del sistema"""
+        try:
+            from utils.simple_telemetry import telemetry
+        except ImportError:
+            return "❌ Sistema de telemetría no disponible"
+        
+        parts = args.split() if args else []
+        
+        if not parts or parts[0] == "stats":
+            try:
+                stats = telemetry.get_stats()
+                
+                output = [
+                    "📊 Estadísticas de Telemetría:\n",
+                    f"  - Métricas totales: {stats['total_metrics']}",
+                    f"  - Eventos totales: {stats['total_events']}"
+                ]
+                
+                if stats['counters']:
+                    output.append("\n🔢 Contadores:")
+                    for name, value in sorted(stats['counters'].items())[:10]:
+                        output.append(f"    {name}: {value}")
+                
+                if stats['gauges']:
+                    output.append("\n📏 Gauges:")
+                    for name, value in sorted(stats['gauges'].items())[:10]:
+                        output.append(f"    {name}: {value:.2f}")
+                
+                if stats['timers']:
+                    output.append("\n⏱️  Timers:")
+                    for name, timer_stats in sorted(stats['timers'].items())[:5]:
+                        output.append(
+                            f"    {name}: "
+                            f"avg={timer_stats['avg']:.3f}s, "
+                            f"min={timer_stats['min']:.3f}s, "
+                            f"max={timer_stats['max']:.3f}s"
+                        )
+                
+                return '\n'.join(output)
+            except Exception as e:
+                logger.error(f"Error obteniendo stats de telemetría: {e}")
+                return f"❌ Error: {str(e)}"
+        
+        elif parts[0] == "events":
+            try:
+                level = parts[1] if len(parts) > 1 else None
+                events = telemetry.get_recent_events(limit=10, level=level)
+                
+                if not events:
+                    return "No hay eventos registrados"
+                
+                output = [f"📋 Eventos Recientes ({len(events)}):\n"]
+                
+                for event in reversed(events):
+                    timestamp = datetime.fromtimestamp(event.timestamp).strftime("%H:%M:%S")
+                    level_emoji = {"info": "ℹ️", "warning": "⚠️", "error": "❌"}.get(event.level, "•")
+                    output.append(f"  {level_emoji} [{timestamp}] {event.type}: {event.message}")
+                
+                return '\n'.join(output)
+            except Exception as e:
+                return f"❌ Error: {str(e)}"
+        
+        elif parts[0] == "export":
+            try:
+                filename = parts[1] if len(parts) > 1 else f"telemetry_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                output_path = Path(filename)
+                telemetry.export_to_json(output_path)
+                return f"✅ Telemetría exportada a: {output_path}"
+            except Exception as e:
+                return f"❌ Error: {str(e)}"
+        
+        elif parts[0] == "clear":
+            try:
+                telemetry.clear()
+                return "✅ Telemetría limpiada"
+            except Exception as e:
+                return f"❌ Error: {str(e)}"
+        
+        else:
+            return f"❌ Subcomando desconocido: {parts[0]}\nDisponibles: stats, events, export, clear"
 
 
 command_registry = CommandRegistry()

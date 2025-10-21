@@ -26,13 +26,19 @@ env/
 ENV/
 .venv
 
-# Datos sensibles
+# Datos sensibles (CRÍTICO - contienen conversaciones privadas)
+agents/memory/*
+!agents/memory/.gitkeep
 data/
 memory/
 *.json
 !**/example.json
+!package.json
+!package-lock.json
+!tsconfig.json
 *.log
-logs/
+logs/*
+!logs/.gitkeep
 
 # Configuración
 .env

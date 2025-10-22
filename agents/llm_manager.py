@@ -116,6 +116,14 @@ class LLMManager:
                 logger.info(f"Provider por defecto seleccionado: {self.current_provider}")
                 return
         
+        if not self.config.auto_fallback:
+            logger.warning(
+                f"Provider por defecto '{self.config.default_provider}' no disponible "
+                f"y auto_fallback está desactivado"
+            )
+            self.current_provider = self.config.default_provider if self.config.default_provider in self.adapters else None
+            return
+        
         for provider in self.config.fallback_order:
             if provider in self.adapters and self._is_provider_available(provider):
                 self.current_provider = provider

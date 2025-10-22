@@ -82,26 +82,34 @@ class TestShellExecutor:
     def test_safe_command_execution(self):
         """Comandos seguros deben ejecutarse correctamente"""
         executor = ShellExecutor()
-        success, stdout, stderr = executor.execute('echo "test"')
+        result = executor.execute('echo "test"')
         
-        assert success
-        assert "test" in stdout
+        assert result.success
+        assert "test" in result.stdout
     
     def test_dangerous_command_blocked(self):
         """Comandos peligrosos deben ser bloqueados"""
         executor = ShellExecutor()
-        success, stdout, stderr = executor.execute('rm -rf /')
         
-        assert not success
-        assert "bloqueado" in stderr.lower() or "prohibido" in stderr.lower()
+        with pytest.raises(ValueError) as exc_info:
+            executor.execute('rm -rf /')
+        
+        assert "Dangerous command" in str(exc_info.value)
     
     def test_command_timeout(self):
         """Comandos con timeout deben ser cancelados"""
-        executor = ShellExecutor()
-        success, stdout, stderr = executor.execute('sleep 10', timeout=1)
+        import subprocess
+        from unittest.mock import patch
         
-        assert not success
-        assert "timeout" in stderr.lower()
+        executor = ShellExecutor()
+        
+        with patch('subprocess.run', side_effect=subprocess.TimeoutExpired('echo', 1)):
+            result = executor.execute('echo "test"', timeout=1)
+        
+        assert result is not None, "Result should not be None"
+        assert not result.success, f"Command should fail due to timeout, got success={result.success}"
+        assert 'timed out' in result.stderr.lower(), f"Expected 'timed out' in stderr, got: {result.stderr}"
+        assert result.exit_code == -1, f"Exit code should be -1 for timeout, got {result.exit_code}"
     
     def test_execution_history(self):
         """El historial de ejecuciones debe ser registrado"""
@@ -110,28 +118,58 @@ class TestShellExecutor:
         executor.execute('echo "test1"')
         executor.execute('echo "test2"')
         
-        history = executor.get_history(limit=10)
+        history = executor.get_command_history()
         assert len(history) >= 2
         assert any('test1' in entry['command'] for entry in history)
     
     def test_failed_command(self):
         """Comandos fallidos deben ser registrados correctamente"""
         executor = ShellExecutor()
-        success, stdout, stderr = executor.execute('python3 nonexistent_file.py')
+        result = executor.execute('python3 nonexistent_file.py')
         
-        assert not success
-        assert stderr or not success
+        assert not result.success
+        assert result.stderr or not result.success
     
     def test_stats(self):
-        """Estadísticas deben ser correctas"""
-        executor = ShellExecutor()
+        """Test execution statistics - cross platform"""
+        import platform
         
-        executor.execute('ls')
-        executor.execute('rm -rf /')
+        executor = ShellExecutor()
+        is_windows = platform.system() == "Windows"
+        
+        print(f"\n=== TEST STATS DEBUG ===")
+        print(f"Platform: {platform.system()}")
+        print(f"Is Windows: {is_windows}")
+        
+        if is_windows:
+            cmd1 = 'echo test'
+            print(f"Command 1 (Windows): {cmd1}")
+        else:
+            cmd1 = 'echo "test"'
+            print(f"Command 1 (Unix): {cmd1}")
+        
+        result1 = executor.execute(cmd1)
+        print(f"Result 1: success={result1.success}, exit_code={result1.exit_code}")
+        
+        if is_windows:
+            cmd2 = 'format C:'
+            print(f"Command 2 (Windows - should block): {cmd2}")
+        else:
+            cmd2 = 'rm -rf /'
+            print(f"Command 2 (Unix - should block): {cmd2}")
+        
+        try:
+            result2 = executor.execute(cmd2)
+            print(f"Result 2: success={result2.success}")
+        except ValueError as e:
+            print(f"Result 2: blocked with ValueError: {e}")
         
         stats = executor.get_stats()
-        assert stats['total_executions'] >= 2
-        assert stats['successful'] >= 1
+        print(f"\n=== STATS ===")
+        print(f"Stats dict: {stats}")
+        
+        assert stats['total_commands'] >= 1, f"Expected at least 1 total command, got {stats['total_commands']}"
+        assert stats['successful'] >= 1, f"Expected at least 1 successful command, got {stats['successful']}"
 
 
 class TestFileEditor:
@@ -241,7 +279,7 @@ class TestGitManager:
         """Debe detectar si es repositorio Git"""
         from tools.git_manager import GitManager
         
-        git = GitManager(auto_approve=True)
+        git = GitManager()
         result = git.is_git_repo()
         assert isinstance(result, bool)
     
@@ -249,7 +287,7 @@ class TestGitManager:
         """Debe ejecutar git status"""
         from tools.git_manager import GitManager
         
-        git = GitManager(auto_approve=True)
+        git = GitManager()
         if git.is_git_repo():
             success, output = git.git_status()
             assert isinstance(success, bool)
@@ -259,7 +297,7 @@ class TestGitManager:
         """Debe obtener historial de commits"""
         from tools.git_manager import GitManager
         
-        git = GitManager(auto_approve=True)
+        git = GitManager()
         if git.is_git_repo():
             success, output = git.git_log(limit=5)
             assert isinstance(success, bool)

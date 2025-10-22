@@ -86,11 +86,11 @@ def pytest_collection_modifyitems(config, items):
         
         # Skip tests que requieren Ollama si no está disponible
         if not ollama_available:
-            if any(x in test_file for x in ["test_rag", "test_ollama", "test_model_selector"]):
+            if "requires_ollama" in [marker.name for marker in item.iter_markers()]:
                 item.add_marker(skip_requires_ollama)
         
-        # Skip tests obsoletos automáticamente
-        if any(x in test_file for x in ["test_tools.py", "test_safety_shell_file.py"]):
+        # Skip tests obsoletos automáticamente (solo si tienen el marker)
+        if "obsolete" in [marker.name for marker in item.iter_markers()]:
             item.add_marker(skip_obsolete)
         
         # Skip tests de Git con permisos en Windows

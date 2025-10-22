@@ -18,6 +18,15 @@ from prompt_toolkit.history import FileHistory
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Generator
 import time
+import sys
+
+
+def _has_console():
+    """Check if running in a real console/terminal"""
+    try:
+        return sys.stdout.isatty() and sys.stderr.isatty()
+    except:
+        return False
 
 
 class RichTerminalUI:
@@ -25,9 +34,19 @@ class RichTerminalUI:
     
     def __init__(self):
         self.console = Console()
-        self.session = PromptSession(
-            history=FileHistory('.patcode_history')
-        )
+        self.has_real_console = _has_console()
+        self.mock_mode = not self.has_real_console
+        
+        if self.has_real_console:
+            try:
+                self.session = PromptSession(
+                    history=FileHistory('.patcode_history')
+                )
+            except Exception:
+                self.session = None
+                self.mock_mode = True
+        else:
+            self.session = None
         
         self.commands = WordCompleter([
             'analyze', 'explain', 'refactor', 'test', 'info',
@@ -52,6 +71,12 @@ class RichTerminalUI:
     
     def prompt_user(self, prompt_text: str = "🤖 PatCode> ") -> str:
         """Prompt con autocompletado e historial"""
+        if self.mock_mode or self.session is None:
+            try:
+                return input(prompt_text).strip()
+            except (KeyboardInterrupt, EOFError):
+                return "/quit"
+        
         try:
             user_input = self.session.prompt(
                 prompt_text,
@@ -62,6 +87,11 @@ class RichTerminalUI:
             return user_input.strip()
         except (KeyboardInterrupt, EOFError):
             return "/quit"
+        except Exception:
+            try:
+                return input(prompt_text).strip()
+            except (KeyboardInterrupt, EOFError):
+                return "/quit"
     
     def display_code(self, code: str, language: str = "python", 
                      title: Optional[str] = None, line_numbers: bool = True):

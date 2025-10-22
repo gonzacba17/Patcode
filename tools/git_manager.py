@@ -14,14 +14,11 @@ class GitManager:
     Gestor de operaciones Git usando ShellExecutor.
     """
     
-    def __init__(self, auto_approve: bool = False):
+    def __init__(self):
         """
         Inicializa el gestor de Git.
-        
-        Args:
-            auto_approve: Si auto-aprobar comandos (solo para tests)
         """
-        self.executor = ShellExecutor(auto_approve=auto_approve)
+        self.executor = ShellExecutor()
         logger.info("GitManager inicializado")
     
     def is_git_repo(self) -> bool:
@@ -43,7 +40,8 @@ class GitManager:
         if not self.is_git_repo():
             return False, "❌ No es un repositorio Git"
         
-        success, stdout, stderr = self.executor.execute('git status', timeout=10)
+        result = self.executor.execute('git status', timeout=10)
+        success, stdout, stderr = result.success, result.stdout, result.stderr
         
         if success:
             return True, stdout
@@ -64,7 +62,8 @@ class GitManager:
             return False, "❌ No es un repositorio Git"
         
         command = f'git diff {filepath}' if filepath else 'git diff'
-        success, stdout, stderr = self.executor.execute(command, timeout=10)
+        result = self.executor.execute(command, timeout=10)
+        success, stdout, stderr = result.success, result.stdout, result.stderr
         
         if success:
             if not stdout.strip():
@@ -92,7 +91,8 @@ class GitManager:
         files_str = ' '.join(f'"{f}"' for f in files)
         command = f'git add {files_str}'
         
-        success, stdout, stderr = self.executor.execute(command, timeout=10)
+        result = self.executor.execute(command, timeout=10)
+        success, stdout, stderr = result.success, result.stdout, result.stderr
         
         if success:
             return True, f"✅ {len(files)} archivo(s) agregado(s) al staging"
@@ -121,14 +121,16 @@ class GitManager:
             return False, "❌ El mensaje del commit no puede estar vacío"
         
         if auto_add:
-            success, stdout, stderr = self.executor.execute('git add -A', timeout=10)
+            result = self.executor.execute('git add -A', timeout=10)
+            success, stdout, stderr = result.success, result.stdout, result.stderr
             if not success:
                 return False, f"Error en git add: {stderr}"
         
         escaped_message = message.replace('"', '\\"').replace('$', '\\$')
         command = f'git commit -m "{escaped_message}"'
         
-        success, stdout, stderr = self.executor.execute(command, timeout=15)
+        result = self.executor.execute(command, timeout=15)
+        success, stdout, stderr = result.success, result.stdout, result.stderr
         
         if success:
             return True, f"✅ Commit creado: {message[:50]}"
@@ -151,7 +153,8 @@ class GitManager:
             return False, "❌ No es un repositorio Git"
         
         command = f'git log --oneline -n {limit}'
-        success, stdout, stderr = self.executor.execute(command, timeout=10)
+        result = self.executor.execute(command, timeout=10)
+        success, stdout, stderr = result.success, result.stdout, result.stderr
         
         if success:
             if not stdout.strip():
@@ -177,7 +180,8 @@ class GitManager:
             return False, "❌ El nombre de la rama no puede estar vacío"
         
         command = f'git branch "{branch_name}"'
-        success, stdout, stderr = self.executor.execute(command, timeout=10)
+        result = self.executor.execute(command, timeout=10)
+        success, stdout, stderr = result.success, result.stdout, result.stderr
         
         if success:
             return True, f"✅ Rama creada: {branch_name}"
@@ -198,7 +202,8 @@ class GitManager:
             return False, "❌ No es un repositorio Git"
         
         command = f'git checkout "{branch_name}"'
-        success, stdout, stderr = self.executor.execute(command, timeout=10)
+        result = self.executor.execute(command, timeout=10)
+        success, stdout, stderr = result.success, result.stdout, result.stderr
         
         if success:
             return True, f"✅ Cambiado a rama: {branch_name}"
@@ -216,7 +221,8 @@ class GitManager:
             return False, "No es un repositorio Git"
         
         command = 'git branch --show-current'
-        success, stdout, stderr = self.executor.execute(command, timeout=5)
+        result = self.executor.execute(command, timeout=5)
+        success, stdout, stderr = result.success, result.stdout, result.stderr
         
         if success:
             branch = stdout.strip()
@@ -234,7 +240,8 @@ class GitManager:
         if not self.is_git_repo():
             return False, "❌ No es un repositorio Git"
         
-        success, stdout, stderr = self.executor.execute('git pull', timeout=30)
+        result = self.executor.execute('git pull', timeout=30)
+        success, stdout, stderr = result.success, result.stdout, result.stderr
         
         if success:
             return True, stdout
@@ -251,7 +258,8 @@ class GitManager:
         if not self.is_git_repo():
             return False, "❌ No es un repositorio Git"
         
-        success, stdout, stderr = self.executor.execute('git push', timeout=30)
+        result = self.executor.execute('git push', timeout=30)
+        success, stdout, stderr = result.success, result.stdout, result.stderr
         
         if success:
             return True, stdout

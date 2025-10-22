@@ -118,15 +118,19 @@ class TestGroqAdapter:
         adapter = GroqAdapter(api_key="")
         assert adapter.is_available() is False
     
-    @patch('agents.llm_adapters.groq_adapter.Groq')
-    def test_initialization_with_key(self, mock_groq_class):
+    def test_initialization_with_key(self):
+        import sys
+        from unittest.mock import MagicMock
+        
+        mock_groq_module = MagicMock()
         mock_client = Mock()
-        mock_groq_class.return_value = mock_client
+        mock_groq_module.Groq = Mock(return_value=mock_client)
         
-        adapter = GroqAdapter(api_key="test-key-123")
-        
-        assert adapter.api_key == "test-key-123"
-        assert adapter.client is not None
+        with patch.dict('sys.modules', {'groq': mock_groq_module}):
+            adapter = GroqAdapter(api_key="test-key-123")
+            
+            assert adapter.api_key == "test-key-123"
+            assert adapter.client is not None
 
 
 class TestOpenAIAdapter:

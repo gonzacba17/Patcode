@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch, MagicMock
 from config.model_selector import ModelSelector, ModelProfile
 
 
@@ -46,11 +47,27 @@ def test_get_model_info(selector):
     assert info.speed in ['fast', 'balanced', 'deep']
 
 
-def test_list_compatible_models(selector):
-    """Verifica listado de modelos compatibles"""
+@patch('psutil.virtual_memory')
+def test_list_compatible_models(mock_ram):
+    """Test model selection with sufficient RAM (mocked)"""
+    
+    mock_ram.return_value = MagicMock(
+        available=16 * 1024**3,
+        total=32 * 1024**3,
+        percent=50.0
+    )
+    
+    selector = ModelSelector()
     compatible = selector.list_compatible_models()
+    
+    print(f"\n=== DEBUG ===")
+    print(f"RAM available (mocked): 16 GB")
+    print(f"System RAM detected: {selector.system_info['available_ram_gb']:.2f} GB")
+    print(f"Compatible models: {compatible}")
+    print(f"Number of models: {len(compatible)}")
+    
     assert isinstance(compatible, list)
-    assert len(compatible) > 0
+    assert len(compatible) > 0, f"Expected models but got empty list with 16 GB RAM (mocked)"
 
 
 def test_speed_recommendation(selector):

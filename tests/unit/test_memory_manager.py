@@ -19,7 +19,7 @@ class TestMemoryManager:
     def test_memory_manager_initialization(self, memory_config):
         manager = MemoryManager(memory_config)
         assert len(manager.active_memory) == 0
-        assert len(manager.passive_summaries) == 0
+        assert len(manager.passive_memory) == 0
     
     def test_add_message(self, memory_config):
         manager = MemoryManager(memory_config)
@@ -43,7 +43,7 @@ class TestMemoryManager:
         manager.clear_all()
         
         assert len(manager.active_memory) == 0
-        assert len(manager.passive_summaries) == 0
+        assert len(manager.passive_memory) == 0
     
     def test_get_stats(self, memory_config):
         manager = MemoryManager(memory_config)

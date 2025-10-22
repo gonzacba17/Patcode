@@ -13,7 +13,7 @@ class TestFileManager:
     
     def test_file_manager_initialization(self, file_manager):
         assert len(file_manager.loaded_files) == 0
-        assert file_manager.max_total_size_kb > 0
+        assert file_manager.max_total_size > 0
     
     def test_get_stats(self, file_manager):
         stats = file_manager.get_stats()

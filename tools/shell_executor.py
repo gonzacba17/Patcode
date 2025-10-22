@@ -8,6 +8,7 @@ import subprocess
 import os
 import time
 import logging
+import platform
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 
@@ -74,8 +75,10 @@ class ShellExecutor:
         self.timeout = timeout
         self.allow_shell = allow_shell
         self.command_history: List[Dict[str, Any]] = []
+        self.is_windows = platform.system() == "Windows"
         
         logger.info(f"ShellExecutor initialized: {self.working_dir}")
+        logger.debug(f"Platform: {platform.system()}")
     
     def execute(
         self,
@@ -122,15 +125,26 @@ class ShellExecutor:
         start_time = time.time()
         
         try:
-            result = subprocess.run(
-                parts,
-                cwd=self.working_dir,
-                capture_output=True,
-                text=True,
-                timeout=exec_timeout,
-                env=exec_env,
-                shell=self.allow_shell
-            )
+            if self.is_windows:
+                result = subprocess.run(
+                    command,
+                    cwd=self.working_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=exec_timeout,
+                    env=exec_env,
+                    shell=True
+                )
+            else:
+                result = subprocess.run(
+                    parts,
+                    cwd=self.working_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=exec_timeout,
+                    env=exec_env,
+                    shell=self.allow_shell
+                )
             
             duration = time.time() - start_time
             
@@ -163,11 +177,71 @@ class ShellExecutor:
         except subprocess.TimeoutExpired:
             duration = time.time() - start_time
             logger.error(f"⏱️ Command timeout after {exec_timeout}s")
-            raise
+            
+            cmd_result = CommandResult(
+                success=False,
+                stdout="",
+                stderr=f"Command timed out after {exec_timeout}s",
+                exit_code=-1,
+                command=command,
+                duration=duration
+            )
+            
+            self.command_history.append({
+                "command": command,
+                "timestamp": time.time(),
+                "success": False,
+                "duration": duration,
+                "exit_code": -1
+            })
+            
+            return cmd_result
+        
+        except FileNotFoundError as e:
+            duration = time.time() - start_time
+            logger.error(f"💥 Command not found: {command}")
+            
+            cmd_result = CommandResult(
+                success=False,
+                stdout="",
+                stderr=f"Command not found: {str(e)}",
+                exit_code=-1,
+                command=command,
+                duration=duration
+            )
+            
+            self.command_history.append({
+                "command": command,
+                "timestamp": time.time(),
+                "success": False,
+                "duration": duration,
+                "exit_code": -1
+            })
+            
+            return cmd_result
         
         except Exception as e:
+            duration = time.time() - start_time
             logger.error(f"💥 Error executing command: {e}")
-            raise
+            
+            cmd_result = CommandResult(
+                success=False,
+                stdout="",
+                stderr=str(e),
+                exit_code=-1,
+                command=command,
+                duration=duration
+            )
+            
+            self.command_history.append({
+                "command": command,
+                "timestamp": time.time(),
+                "success": False,
+                "duration": duration,
+                "exit_code": -1
+            })
+            
+            return cmd_result
     
     def execute_multiple(
         self,

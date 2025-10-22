@@ -3,6 +3,7 @@ Tests para el sistema RAG de PatCode.
 """
 import pytest
 from pathlib import Path
+from unittest.mock import Mock, patch
 from rag.embeddings import EmbeddingGenerator
 from rag.vector_store import VectorStore
 from rag.code_indexer import CodeIndexer
@@ -52,10 +53,16 @@ def test_embedding_generation(embedding_gen):
 def test_embedding_cache(embedding_gen):
     text = "def test(): pass"
     
-    emb1 = embedding_gen.generate_embedding(text)
-    emb2 = embedding_gen.generate_embedding(text)
-    
-    assert emb1 == emb2
+    mock_embedding = [0.1] * 768
+    with patch('requests.post') as mock_post:
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {'embedding': mock_embedding}
+        
+        emb1 = embedding_gen.generate_embedding(text)
+        emb2 = embedding_gen.generate_embedding(text)
+        
+        assert emb1 == emb2
+        assert mock_post.call_count == 1
 
 
 def test_chunk_text(embedding_gen):

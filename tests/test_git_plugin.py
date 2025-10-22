@@ -182,12 +182,15 @@ def test_git_plugin_log(git_repo):
     assert 'Initial commit' in result['result']
 
 
-def test_git_plugin_not_a_repo(safe_git_repo):
+def test_git_plugin_not_a_repo(tmp_path):
     """Verifica error cuando no es repo Git"""
+    not_a_repo = tmp_path / "not_a_repo"
+    not_a_repo.mkdir()
+    
     plugin = GitHelperPlugin()
     
     context = {
-        'current_dir': safe_git_repo,
+        'current_dir': not_a_repo,
         'args': {'action': 'status'}
     }
     
